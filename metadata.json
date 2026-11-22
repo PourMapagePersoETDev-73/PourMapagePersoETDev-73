@@ -1,0 +1,6 @@
+{
+  "name": "EuroQuant — Analyse Statistique EuroMillions",
+  "description": "Laboratoire d'analyse statistique, de backtesting walk-forward et d'optimisation combinatoire Rang 1 et Rang 2 sur l'historique des tirages EuroMillions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

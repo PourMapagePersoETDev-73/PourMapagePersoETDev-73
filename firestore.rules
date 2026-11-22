@@ -1,0 +1,141 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'email', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid == userId && data.uid == request.auth.uid && data.uid.size() <= 128
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 200
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTrackedApp(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'name', 'url', 'githubRepo', 'category',
+          'status', 'notes', 'isPinned', 'isInternalEuroQuant',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'name', 'url', 'githubRepo', 'category',
+          'status', 'notes', 'isPinned', 'isInternalEuroQuant',
+          'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == userId && data.ownerId == request.auth.uid && data.ownerId.size() <= 128
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 80
+        && data.url is string && data.url.size() >= 1 && data.url.size() <= 300
+        && data.githubRepo is string && data.githubRepo.size() <= 300
+        && data.category is string && data.category in ['Outil', 'Dashboard', 'Jeu', 'API', 'Portfolio', 'Autre']
+        && data.status is string && data.status in ['online', 'dev', 'maintenance']
+        && data.notes is string && data.notes.size() <= 500
+        && data.isPinned is bool
+        && data.isInternalEuroQuant is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSavedGrid(data, userId) {
+      return data.keys().hasAll(['ownerId', 'label', 'targetRank', 'balls', 'stars', 'drawDate', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'label', 'targetRank', 'balls', 'stars', 'drawDate', 'createdAt'])
+        && data.ownerId is string && data.ownerId == userId && data.ownerId == request.auth.uid && data.ownerId.size() <= 128
+        && data.label is string && data.label.size() >= 1 && data.label.size() <= 80
+        && data.targetRank is string && data.targetRank in ['Rang 1', 'Rang 2']
+        && data.balls is list && data.balls.size() == 5
+        && data.balls[0] is int && data.balls[1] is int && data.balls[2] is int && data.balls[3] is int && data.balls[4] is int
+        && data.stars is list && data.stars.size() == 2
+        && data.stars[0] is int && data.stars[1] is int
+        && data.drawDate is string && data.drawDate.size() >= 1 && data.drawDate.size() <= 32
+        && data.createdAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isVerified()
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isVerified()
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'updatedAt']);
+      allow delete: if false;
+
+      match /apps/{appId} {
+        allow get: if isValidId(userId) && isValidId(appId) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(appId)
+          && isVerified()
+          && isOwner(userId)
+          && isValidTrackedApp(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(appId)
+          && isVerified()
+          && isOwner(userId)
+          && isValidTrackedApp(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['isPinned', 'updatedAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'url', 'githubRepo', 'category', 'status', 'notes', 'isPinned', 'updatedAt'])
+          );
+        allow delete: if isValidId(userId) && isValidId(appId) && isVerified() && isOwner(userId);
+      }
+
+      match /savedGrids/{gridId} {
+        allow get: if isValidId(userId) && isValidId(gridId) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(gridId)
+          && isVerified()
+          && isOwner(userId)
+          && isValidSavedGrid(incoming(), userId)
+          && incoming().createdAt == request.time;
+        allow update: if false;
+        allow delete: if isValidId(userId) && isValidId(gridId) && isVerified() && isOwner(userId);
+      }
+    }
+  }
+}

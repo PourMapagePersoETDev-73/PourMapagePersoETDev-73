@@ -1,0 +1,152 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Profil privé de l'utilisateur authentifié",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 200
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "email", "createdAt", "updatedAt"]
+    },
+    "TrackedApp": {
+      "title": "TrackedApp",
+      "description": "Application web personnelle suivie dans le tableau de bord (GitHub, URL, statut)",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "githubRepo": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "category": {
+          "type": "string",
+          "enum": ["Outil", "Dashboard", "Jeu", "API", "Portfolio", "Autre"],
+          "maxLength": 32
+        },
+        "status": {
+          "type": "string",
+          "enum": ["online", "dev", "maintenance"],
+          "maxLength": 20
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "isPinned": {
+          "type": "boolean"
+        },
+        "isInternalEuroQuant": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "url",
+        "githubRepo",
+        "category",
+        "status",
+        "notes",
+        "isPinned",
+        "isInternalEuroQuant",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SavedGrid": {
+      "title": "SavedGrid",
+      "description": "Combinaison EuroMillions sauvegardée pour un prochain tirage",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "targetRank": {
+          "type": "string",
+          "enum": ["Rang 1", "Rang 2"],
+          "maxLength": 16
+        },
+        "balls": {
+          "type": "array"
+        },
+        "stars": {
+          "type": "array"
+        },
+        "drawDate": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerId", "label", "targetRank", "balls", "stars", "drawDate", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Profil utilisateur privé contenant email et nom"
+    },
+    "/users/{userId}/apps/{appId}": {
+      "schema": { "$ref": "#/entities/TrackedApp" },
+      "description": "Liste des applications web personnelles suivies par l'utilisateur"
+    },
+    "/users/{userId}/savedGrids/{gridId}": {
+      "schema": { "$ref": "#/entities/SavedGrid" },
+      "description": "Grilles EuroMillions sauvegardées par l'utilisateur"
+    }
+  }
+}
