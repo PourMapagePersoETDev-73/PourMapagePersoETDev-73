@@ -1149,8 +1149,8 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
                     onClick={() =>
                       applyAppPreset(
                         'Suivi PAC',
-                        'https://pourmapagepersoetdev-73.github.io/Suivi_PAC_Perso/',
-                        'https://github.com/PourMapagePersoETDev-73/Suivi_PAC_Perso',
+                        'https://pourmapagepersoetdev-73.github.io/SuiviAC-V3/',
+                        'https://github.com/PourMapagePersoETDev-73/SuiviAC-V3',
                         'Suivi pompe à chaleur'
                       )
                     }
