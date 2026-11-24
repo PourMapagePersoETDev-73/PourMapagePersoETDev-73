@@ -63,6 +63,11 @@ interface PersonalPortalProps {
   user: User | null;
   authReady: boolean;
   analysis: DatasetAnalysis | null;
+  focusedAppId: string | null;
+  onFocusApp: (appId: string | null) => void;
+  onAppsChange: (
+    apps: Array<{ id: string; name: string; isInternalEuroQuant: boolean }>
+  ) => void;
   onOpenEuroQuant: () => void;
 }
 
@@ -92,6 +97,9 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
   user,
   authReady,
   analysis,
+  focusedAppId,
+  onFocusApp,
+  onAppsChange,
   onOpenEuroQuant,
 }) => {
   const [authError, setAuthError] = useState<string | null>(null);
@@ -117,7 +125,6 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
   const [formError, setFormError] = useState<string | null>(null);
 
   const [viewMode, setViewMode] = useState<'mosaic' | 'cards'>('mosaic');
-  const [focusedAppId, setFocusedAppId] = useState<string | null>(null);
   const [iframeVersions, setIframeVersions] = useState<Record<string, number>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showGithubGuide, setShowGithubGuide] = useState(false);
@@ -128,6 +135,16 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
     () => (analysis ? buildNextDrawProposals(analysis) : null),
     [analysis]
   );
+
+  useEffect(() => {
+    onAppsChange(
+      apps.map((a) => ({
+        id: a.id,
+        name: a.name,
+        isInternalEuroQuant: a.isInternalEuroQuant,
+      }))
+    );
+  }, [apps, onAppsChange]);
 
   // Sync user profile + subscribe to tracked apps once authenticated
   useEffect(() => {
@@ -385,7 +402,7 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
     const path = `users/${user.uid}/apps/${app.id}`;
     try {
       await deleteDoc(doc(db, path));
-      if (focusedAppId === app.id) setFocusedAppId(null);
+      if (focusedAppId === app.id) onFocusApp(null);
       setConfirmDeleteId(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, path);
@@ -404,7 +421,7 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
       onOpenEuroQuant();
       return;
     }
-    setFocusedAppId(app.id);
+    onFocusApp(app.id);
   };
 
   const copySnippet = (key: string, text: string) => {
@@ -503,42 +520,26 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
 
     return (
       <div className="space-y-4">
-        <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
-              onClick={() => setFocusedAppId(null)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-md text-slate-700 hover:bg-slate-50 cursor-pointer"
+              onClick={() => onFocusApp(null)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-md text-slate-700 hover:bg-slate-50 shrink-0 cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               Tableau de bord
             </button>
-
-            <span className="text-slate-300 hidden sm:inline">|</span>
-
-            <div className="flex flex-wrap items-center gap-1.5">
-              {apps.map((appItem) => {
-                const isCurrent = appItem.id === focusedApp.id;
-                return (
-                  <button
-                    key={appItem.id}
-                    type="button"
-                    onClick={() => openAppInCockpit(appItem)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
-                      isCurrent
-                        ? 'bg-blue-700 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {appItem.name}
-                  </button>
-                );
-              })}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-slate-900 truncate">{focusedApp.name}</h2>
+                <span className={`text-[11px] font-medium ${stMeta.color} shrink-0`}>{stMeta.label}</span>
+              </div>
+              <div className="text-[11px] font-mono text-slate-400 truncate">{focusedApp.url}</div>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0 text-xs">
-            <span className={`font-medium ${stMeta.color} mr-1`}>{stMeta.label}</span>
             <button
               type="button"
               onClick={() => reloadAppFrame(focusedApp.id)}
@@ -559,7 +560,7 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
             </a>
             <button
               type="button"
-              onClick={() => setFocusedAppId(null)}
+              onClick={() => onFocusApp(null)}
               className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-900 text-white rounded-md hover:bg-slate-800 cursor-pointer"
               title="Revenir à la grille"
             >

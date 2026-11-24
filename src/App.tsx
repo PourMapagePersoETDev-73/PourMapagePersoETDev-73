@@ -31,6 +31,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('portal');
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState<boolean>(false);
+  const [portalApps, setPortalApps] = useState<
+    Array<{ id: string; name: string; isInternalEuroQuant: boolean }>
+  >([]);
+  const [focusedAppId, setFocusedAppId] = useState<string | null>(null);
 
   const [analysis, setAnalysis] = useState<DatasetAnalysis | null>(null);
   const [defaultDraws, setDefaultDraws] = useState<EuroMillionsDraw[]>([]);
@@ -43,17 +47,25 @@ export default function App() {
     const unsub = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthReady(true);
+      if (!currentUser) {
+        setPortalApps([]);
+        setFocusedAppId(null);
+      }
     });
     return () => unsub();
   }, []);
 
   useEffect(() => {
     if (isEmbedMode) return;
-    document.title =
-      activeTab === 'portal'
-        ? 'Mon Portail — Tableau de bord personnel'
-        : 'EuroQuant — Analyse Statistique & Optimisation EuroMillions';
-  }, [activeTab, isEmbedMode]);
+    if (activeTab === 'portal') {
+      const focused = portalApps.find((a) => a.id === focusedAppId);
+      document.title = focused
+        ? `${focused.name} — Mon Portail`
+        : 'Mon Portail — Tableau de bord personnel';
+    } else {
+      document.title = 'EuroQuant — Analyse Statistique & Optimisation EuroMillions';
+    }
+  }, [activeTab, isEmbedMode, portalApps, focusedAppId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,7 +238,10 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-6">
           <button
             type="button"
-            onClick={() => setActiveTab('portal')}
+            onClick={() => {
+              setActiveTab('portal');
+              setFocusedAppId(null);
+            }}
             className="flex items-baseline gap-2.5 text-left shrink-0 cursor-pointer"
           >
             <span className="text-base font-bold tracking-tight text-slate-900 font-display">
@@ -241,12 +256,15 @@ export default function App() {
             </span>
           </button>
 
-          <nav aria-label="Navigation principale" className="hidden md:flex items-center gap-7">
+          <nav aria-label="Navigation principale" className="hidden md:flex items-center gap-6 overflow-x-auto">
             <button
               type="button"
-              onClick={() => setActiveTab('portal')}
+              onClick={() => {
+                setActiveTab('portal');
+                setFocusedAppId(null);
+              }}
               className={`text-sm font-medium whitespace-nowrap transition-colors py-1 border-b-2 cursor-pointer ${
-                activeTab === 'portal'
+                activeTab === 'portal' && focusedAppId === null
                   ? 'text-slate-900 border-blue-700'
                   : 'text-slate-600 border-transparent hover:text-slate-900'
               }`}
@@ -254,33 +272,50 @@ export default function App() {
               Tableau de bord
             </button>
 
-            {isEuroQuantTab ? (
-              euroQuantLinks.map((link) => {
-                const isActive = activeTab === link.id;
-                return (
-                  <button
-                    key={link.id}
-                    type="button"
-                    onClick={() => setActiveTab(link.id)}
-                    className={`text-sm font-medium whitespace-nowrap transition-colors py-1 border-b-2 cursor-pointer ${
-                      isActive
-                        ? 'text-slate-900 border-blue-700'
-                        : 'text-slate-600 border-transparent hover:text-slate-900'
-                    }`}
-                  >
-                    {link.label}
-                  </button>
-                );
-              })
-            ) : (
-              <button
-                type="button"
-                onClick={() => setActiveTab('overview')}
-                className="text-sm font-medium whitespace-nowrap transition-colors py-1 border-b-2 border-transparent text-slate-600 hover:text-slate-900 cursor-pointer"
-              >
-                EuroQuant
-              </button>
-            )}
+            {isEuroQuantTab
+              ? euroQuantLinks.map((link) => {
+                  const isActive = activeTab === link.id;
+                  return (
+                    <button
+                      key={link.id}
+                      type="button"
+                      onClick={() => setActiveTab(link.id)}
+                      className={`text-sm font-medium whitespace-nowrap transition-colors py-1 border-b-2 cursor-pointer ${
+                        isActive
+                          ? 'text-slate-900 border-blue-700'
+                          : 'text-slate-600 border-transparent hover:text-slate-900'
+                      }`}
+                    >
+                      {link.label}
+                    </button>
+                  );
+                })
+              : portalApps.map((appItem) => {
+                  const isFocused = activeTab === 'portal' && focusedAppId === appItem.id;
+                  const shortLabel = appItem.isInternalEuroQuant ? 'EuroQuant' : appItem.name;
+                  return (
+                    <button
+                      key={appItem.id}
+                      type="button"
+                      onClick={() => {
+                        if (appItem.isInternalEuroQuant) {
+                          setFocusedAppId(null);
+                          setActiveTab('overview');
+                        } else {
+                          setActiveTab('portal');
+                          setFocusedAppId(appItem.id);
+                        }
+                      }}
+                      className={`text-sm font-medium whitespace-nowrap transition-colors py-1 border-b-2 cursor-pointer ${
+                        isFocused
+                          ? 'text-slate-900 border-blue-700'
+                          : 'text-slate-600 border-transparent hover:text-slate-900'
+                      }`}
+                    >
+                      {shortLabel}
+                    </button>
+                  );
+                })}
           </nav>
 
           <div className="flex items-center gap-2.5 shrink-0">
@@ -288,7 +323,10 @@ export default function App() {
               <>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('portal')}
+                  onClick={() => {
+                    setActiveTab('portal');
+                    setFocusedAppId(null);
+                  }}
                   className="hidden sm:inline-flex items-center px-3 py-2 text-xs sm:text-sm font-medium border border-slate-200 rounded-md text-slate-700 hover:bg-slate-50 whitespace-nowrap transition-colors cursor-pointer"
                 >
                   ← Mon Portail
@@ -322,35 +360,55 @@ export default function App() {
         <div className="md:hidden border-t border-slate-100 px-4 py-2 flex items-center gap-4 overflow-x-auto">
           <button
             type="button"
-            onClick={() => setActiveTab('portal')}
+            onClick={() => {
+              setActiveTab('portal');
+              setFocusedAppId(null);
+            }}
             className={`text-xs font-medium whitespace-nowrap py-1 cursor-pointer ${
-              activeTab === 'portal' ? 'text-blue-700 font-semibold' : 'text-slate-600'
+              activeTab === 'portal' && focusedAppId === null
+                ? 'text-blue-700 font-semibold'
+                : 'text-slate-600'
             }`}
           >
             Tableau de bord
           </button>
-          {isEuroQuantTab ? (
-            euroQuantLinks.map((link) => (
-              <button
-                key={link.id}
-                type="button"
-                onClick={() => setActiveTab(link.id)}
-                className={`text-xs font-medium whitespace-nowrap py-1 cursor-pointer ${
-                  activeTab === link.id ? 'text-blue-700 font-semibold' : 'text-slate-600'
-                }`}
-              >
-                {link.label}
-              </button>
-            ))
-          ) : (
-            <button
-              type="button"
-              onClick={() => setActiveTab('overview')}
-              className="text-xs font-medium whitespace-nowrap py-1 text-slate-600 cursor-pointer"
-            >
-              EuroQuant
-            </button>
-          )}
+          {isEuroQuantTab
+            ? euroQuantLinks.map((link) => (
+                <button
+                  key={link.id}
+                  type="button"
+                  onClick={() => setActiveTab(link.id)}
+                  className={`text-xs font-medium whitespace-nowrap py-1 cursor-pointer ${
+                    activeTab === link.id ? 'text-blue-700 font-semibold' : 'text-slate-600'
+                  }`}
+                >
+                  {link.label}
+                </button>
+              ))
+            : portalApps.map((appItem) => {
+                const isFocused = activeTab === 'portal' && focusedAppId === appItem.id;
+                const shortLabel = appItem.isInternalEuroQuant ? 'EuroQuant' : appItem.name;
+                return (
+                  <button
+                    key={appItem.id}
+                    type="button"
+                    onClick={() => {
+                      if (appItem.isInternalEuroQuant) {
+                        setFocusedAppId(null);
+                        setActiveTab('overview');
+                      } else {
+                        setActiveTab('portal');
+                        setFocusedAppId(appItem.id);
+                      }
+                    }}
+                    className={`text-xs font-medium whitespace-nowrap py-1 cursor-pointer ${
+                      isFocused ? 'text-blue-700 font-semibold' : 'text-slate-600'
+                    }`}
+                  >
+                    {shortLabel}
+                  </button>
+                );
+              })}
         </div>
       </header>
 
@@ -360,7 +418,13 @@ export default function App() {
             user={user}
             authReady={authReady}
             analysis={analysis}
-            onOpenEuroQuant={() => setActiveTab('overview')}
+            focusedAppId={focusedAppId}
+            onFocusApp={setFocusedAppId}
+            onAppsChange={setPortalApps}
+            onOpenEuroQuant={() => {
+              setFocusedAppId(null);
+              setActiveTab('overview');
+            }}
           />
         ) : (
           <>
