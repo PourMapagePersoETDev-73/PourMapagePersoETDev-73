@@ -202,9 +202,10 @@ export default function App() {
     );
   }
 
-  const navLinks: Array<{ id: ActiveTab; label: string }> = [
-    { id: 'portal', label: 'Mon Portail' },
-    { id: 'overview', label: 'EuroQuant' },
+  const isEuroQuantTab = activeTab !== 'portal';
+
+  const euroQuantLinks: Array<{ id: ActiveTab; label: string }> = [
+    { id: 'overview', label: 'Vue d’ensemble' },
     { id: 'frequencies', label: 'Fréquences' },
     { id: 'backtest', label: 'Backtest & Gains' },
     { id: 'history', label: 'Historique' },
@@ -221,71 +222,130 @@ export default function App() {
             className="flex items-baseline gap-2.5 text-left shrink-0 cursor-pointer"
           >
             <span className="text-base font-bold tracking-tight text-slate-900 font-display">
-              EuroQuant
+              {isEuroQuantTab ? 'EuroQuant' : 'Mon Portail'}
             </span>
             <span className="hidden sm:inline text-xs font-mono text-slate-500">
-              {user ? 'Portail Connecté' : hasCustomData ? 'Base mise à jour' : 'Portail & Analyse'}
+              {isEuroQuantTab
+                ? hasCustomData
+                  ? 'Base mise à jour'
+                  : 'Analyse EuroMillions'
+                : user
+                ? 'Tableau de bord perso'
+                : 'Espace Applications'}
             </span>
           </button>
 
           <nav aria-label="Navigation principale" className="hidden md:flex items-center gap-7">
-            {navLinks.map((link) => {
-              const isActive = activeTab === link.id;
-              return (
-                <button
-                  key={link.id}
-                  type="button"
-                  onClick={() => setActiveTab(link.id)}
-                  className={`text-sm font-medium whitespace-nowrap transition-colors py-1 border-b-2 cursor-pointer ${
-                    isActive
-                      ? 'text-slate-900 border-blue-700'
-                      : 'text-slate-600 border-transparent hover:text-slate-900'
-                  }`}
-                >
-                  {link.label}
-                </button>
-              );
-            })}
+            <button
+              type="button"
+              onClick={() => setActiveTab('portal')}
+              className={`text-sm font-medium whitespace-nowrap transition-colors py-1 border-b-2 cursor-pointer ${
+                activeTab === 'portal'
+                  ? 'text-slate-900 border-blue-700'
+                  : 'text-slate-600 border-transparent hover:text-slate-900'
+              }`}
+            >
+              Mes Applications
+            </button>
+
+            {isEuroQuantTab ? (
+              euroQuantLinks.map((link) => {
+                const isActive = activeTab === link.id;
+                return (
+                  <button
+                    key={link.id}
+                    type="button"
+                    onClick={() => setActiveTab(link.id)}
+                    className={`text-sm font-medium whitespace-nowrap transition-colors py-1 border-b-2 cursor-pointer ${
+                      isActive
+                        ? 'text-slate-900 border-blue-700'
+                        : 'text-slate-600 border-transparent hover:text-slate-900'
+                    }`}
+                  >
+                    {link.label}
+                  </button>
+                );
+              })
+            ) : (
+              <button
+                type="button"
+                onClick={() => setActiveTab('overview')}
+                className="text-sm font-medium whitespace-nowrap transition-colors py-1 border-b-2 border-transparent text-slate-600 hover:text-slate-900 cursor-pointer"
+              >
+                EuroQuant
+              </button>
+            )}
           </nav>
 
           <div className="flex items-center gap-2.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => setIsImportOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium border border-slate-200 rounded-md text-slate-700 hover:bg-slate-50 whitespace-nowrap transition-colors cursor-pointer"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Importer CSV</span>
-              <span className="sm:hidden">CSV</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('lab')}
-              className={`px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-md whitespace-nowrap transition-colors cursor-pointer ${
-                activeTab === 'lab'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-blue-700 text-white hover:bg-blue-800'
-              }`}
-            >
-              Laboratoire Rang 1 &amp; 2
-            </button>
+            {isEuroQuantTab ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsImportOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium border border-slate-200 rounded-md text-slate-700 hover:bg-slate-50 whitespace-nowrap transition-colors cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Importer CSV</span>
+                  <span className="sm:hidden">CSV</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('lab')}
+                  className={`px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-semibold rounded-md whitespace-nowrap transition-colors cursor-pointer ${
+                    activeTab === 'lab'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-blue-700 text-white hover:bg-blue-800'
+                  }`}
+                >
+                  Laboratoire Rang 1 &amp; 2
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setActiveTab('overview')}
+                className="px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-md bg-slate-900 text-white hover:bg-slate-800 whitespace-nowrap transition-colors cursor-pointer"
+              >
+                Ouvrir EuroQuant →
+              </button>
+            )}
           </div>
         </div>
 
         {/* Navigation mobile secondaire */}
         <div className="md:hidden border-t border-slate-100 px-4 py-2 flex items-center gap-4 overflow-x-auto">
-          {navLinks.map((link) => (
+          <button
+            type="button"
+            onClick={() => setActiveTab('portal')}
+            className={`text-xs font-medium whitespace-nowrap py-1 cursor-pointer ${
+              activeTab === 'portal' ? 'text-blue-700 font-semibold' : 'text-slate-600'
+            }`}
+          >
+            Mes Applications
+          </button>
+          {isEuroQuantTab ? (
+            euroQuantLinks.map((link) => (
+              <button
+                key={link.id}
+                type="button"
+                onClick={() => setActiveTab(link.id)}
+                className={`text-xs font-medium whitespace-nowrap py-1 cursor-pointer ${
+                  activeTab === link.id ? 'text-blue-700 font-semibold' : 'text-slate-600'
+                }`}
+              >
+                {link.label}
+              </button>
+            ))
+          ) : (
             <button
-              key={link.id}
               type="button"
-              onClick={() => setActiveTab(link.id)}
-              className={`text-xs font-medium whitespace-nowrap py-1 cursor-pointer ${
-                activeTab === link.id ? 'text-blue-700 font-semibold' : 'text-slate-600'
-              }`}
+              onClick={() => setActiveTab('overview')}
+              className="text-xs font-medium whitespace-nowrap py-1 text-slate-600 cursor-pointer"
             >
-              {link.label}
+              EuroQuant
             </button>
-          ))}
+          )}
         </div>
       </header>
 
@@ -358,10 +418,10 @@ export default function App() {
       <footer className="border-t border-slate-200 bg-white mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
           <div>
-            EuroQuant · Portail personnel &amp; analyse statistique FDJ ({analysis?.totalDraws ?? 710} tirages)
+            Portail Personnel &amp; EuroQuant · {analysis?.totalDraws ?? 710} tirages FDJ analysés
           </div>
           <div className="font-mono">
-            Prêt pour GitHub Pages · Jeu de hasard indépendant
+            Hébergement GitHub Pages · Accès synchronisé
           </div>
         </div>
       </footer>

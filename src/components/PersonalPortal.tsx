@@ -583,13 +583,245 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
         </div>
       </section>
 
-      {/* Widget EuroQuant en direct + Grilles sauvegardées */}
+      {/* Liste / Catalogue des applications web personnelles — EN PREMIER */}
+      <section className="bg-white border border-slate-200 rounded-lg p-6 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">
+              Vos applications web ({filteredApps.length})
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Lancez vos applis dans un nouvel onglet ou ouvrez l’aperçu directement ici avec l’icône écran.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Rechercher une app..."
+                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-md w-48 focus:outline-none focus:border-blue-700"
+              />
+            </div>
+
+            <div className="flex items-center border border-slate-200 rounded-md overflow-hidden text-xs">
+              {(['all', 'online', 'dev', 'maintenance'] as const).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setStatusFilter(st)}
+                  className={`px-2.5 py-1.5 font-medium cursor-pointer ${
+                    statusFilter === st
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {st === 'all'
+                    ? 'Toutes'
+                    : st === 'online'
+                    ? 'En ligne'
+                    : st === 'dev'
+                    ? 'En dev'
+                    : 'Maint.'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {loadingApps ? (
+          <div className="py-10 text-center text-xs text-slate-500">
+            Chargement de vos applications…
+          </div>
+        ) : filteredApps.length === 0 ? (
+          <div className="border border-slate-200 rounded-md p-8 text-center space-y-3">
+            <p className="text-sm text-slate-600">
+              Aucune application ne correspond à vos critères actuels.
+            </p>
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-blue-700 text-white rounded-md hover:bg-blue-800 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Ajouter ma première application
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredApps.map((app) => {
+              const stMeta = STATUS_LABELS[app.status];
+              const cleanHostPath = app.url.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+              return (
+                <article
+                  key={app.id}
+                  className="border border-slate-200 rounded-md p-4 flex flex-col justify-between hover:border-slate-300 transition-colors bg-slate-50/30"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="text-[11px] font-mono uppercase text-slate-500">
+                          {app.category}
+                          {app.isPinned ? ' · Épinglée' : ''}
+                        </div>
+                        <h3 className="text-sm font-semibold text-slate-900 mt-0.5">{app.name}</h3>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => cycleStatus(app)}
+                        className={`text-xs font-medium ${stMeta.color} cursor-pointer shrink-0`}
+                        title="Cliquer pour changer le statut"
+                      >
+                        {stMeta.label}
+                      </button>
+                    </div>
+
+                    {!app.isInternalEuroQuant && cleanHostPath && (
+                      <div className="mt-1.5 text-[11px] font-mono text-slate-400 truncate">
+                        {cleanHostPath}
+                      </div>
+                    )}
+
+                    <p className="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed">
+                      {app.notes || 'Cliquez sur le crayon pour ajouter une description.'}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-slate-200/70 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 text-xs">
+                      {app.isInternalEuroQuant ? (
+                        <button
+                          type="button"
+                          onClick={onOpenEuroQuant}
+                          className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:text-blue-800 cursor-pointer"
+                        >
+                          Ouvrir
+                        </button>
+                      ) : (
+                        <>
+                          <a
+                            href={app.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:text-blue-800"
+                          >
+                            Ouvrir
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => setPreviewApp(app)}
+                            className={`inline-flex items-center gap-1 cursor-pointer ${
+                              previewApp?.id === app.id
+                                ? 'text-blue-700 font-medium'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                            title="Aperçu intégré dans le portail"
+                          >
+                            <Monitor className="w-3.5 h-3.5" />
+                            <span>Aperçu</span>
+                          </button>
+                        </>
+                      )}
+
+                      {app.githubRepo && (
+                        <a
+                          href={app.githubRepo}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900"
+                          title="Voir le dépôt GitHub"
+                        >
+                          <GitBranch className="w-3.5 h-3.5" />
+                          GitHub
+                        </a>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => togglePin(app)}
+                        className={`p-1 rounded cursor-pointer ${
+                          app.isPinned
+                            ? 'text-blue-700'
+                            : 'text-slate-400 hover:text-slate-700'
+                        }`}
+                        title={app.isPinned ? 'Désépingler' : 'Épingler'}
+                      >
+                        <Pin className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(app)}
+                        className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+                        title="Modifier"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteApp(app)}
+                        className="p-1 text-slate-400 hover:text-rose-700 cursor-pointer"
+                        title="Supprimer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Panneau d'aperçu intégré (iframe) si une app externe est inspectée */}
+      {previewApp && (
+        <section className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-xs font-mono text-slate-500">Aperçu intégré · {previewApp.url}</div>
+              <h3 className="text-base font-semibold text-slate-900">{previewApp.name}</h3>
+            </div>
+            <div className="flex items-center gap-3">
+              <a
+                href={previewApp.url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs font-medium text-blue-700 hover:underline inline-flex items-center gap-1"
+              >
+                Ouvrir dans un nouvel onglet
+                <ExternalLink className="w-3 h-3" />
+              </a>
+              <button
+                type="button"
+                onClick={() => setPreviewApp(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          <iframe
+            src={previewApp.url}
+            title={previewApp.name}
+            className="w-full h-[540px] border border-slate-200 rounded-md bg-slate-50"
+          />
+        </section>
+      )}
+
+      {/* Widget EuroQuant en direct + Grilles sauvegardées — EN SECOND PLAN */}
       {proposals && (
         <section className="bg-white border border-slate-200 rounded-lg p-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
             <div>
               <div className="text-xs font-mono uppercase text-blue-700">
-                Widget en direct · EuroQuant ({proposals.nextDraw.jour} {proposals.nextDraw.dateStr})
+                Accès rapide · EuroQuant ({proposals.nextDraw.jour} {proposals.nextDraw.dateStr})
               </div>
               <h2 className="text-base font-semibold text-slate-900 mt-0.5">
                 Propositions prêtes pour le prochain tirage
@@ -723,221 +955,6 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
               )}
             </div>
           </div>
-        </section>
-      )}
-
-      {/* Liste / Catalogue des applications web personnelles */}
-      <section className="bg-white border border-slate-200 rounded-lg p-6 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <h2 className="text-base font-semibold text-slate-900">
-            Catalogue de vos applications web ({filteredApps.length})
-          </h2>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Rechercher une app..."
-                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-md w-48 focus:outline-none focus:border-blue-700"
-              />
-            </div>
-
-            <div className="flex items-center border border-slate-200 rounded-md overflow-hidden text-xs">
-              {(['all', 'online', 'dev', 'maintenance'] as const).map((st) => (
-                <button
-                  key={st}
-                  type="button"
-                  onClick={() => setStatusFilter(st)}
-                  className={`px-2.5 py-1.5 font-medium cursor-pointer ${
-                    statusFilter === st
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-white text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  {st === 'all'
-                    ? 'Toutes'
-                    : st === 'online'
-                    ? 'En ligne'
-                    : st === 'dev'
-                    ? 'En dev'
-                    : 'Maint.'}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {loadingApps ? (
-          <div className="py-10 text-center text-xs text-slate-500">
-            Chargement de vos applications…
-          </div>
-        ) : filteredApps.length === 0 ? (
-          <div className="border border-slate-200 rounded-md p-8 text-center space-y-3">
-            <p className="text-sm text-slate-600">
-              Aucune application ne correspond à vos critères actuels.
-            </p>
-            <button
-              type="button"
-              onClick={openAddModal}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold bg-blue-700 text-white rounded-md hover:bg-blue-800 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Ajouter ma première application
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredApps.map((app) => {
-              const stMeta = STATUS_LABELS[app.status];
-              return (
-                <article
-                  key={app.id}
-                  className="border border-slate-200 rounded-md p-4 flex flex-col justify-between hover:border-slate-300 transition-colors"
-                >
-                  <div>
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="text-[11px] font-mono uppercase text-slate-500">
-                          {app.category}
-                          {app.isPinned ? ' · Épinglée' : ''}
-                        </div>
-                        <h3 className="text-sm font-semibold text-slate-900 mt-0.5">{app.name}</h3>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => cycleStatus(app)}
-                        className={`text-xs font-medium ${stMeta.color} cursor-pointer shrink-0`}
-                        title="Cliquer pour changer le statut"
-                      >
-                        {stMeta.label}
-                      </button>
-                    </div>
-
-                    <p className="text-xs text-slate-600 mt-2 line-clamp-3 leading-relaxed">
-                      {app.notes || 'Aucune note enregistrée.'}
-                    </p>
-                  </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-xs">
-                      {app.isInternalEuroQuant ? (
-                        <button
-                          type="button"
-                          onClick={onOpenEuroQuant}
-                          className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:text-blue-800 cursor-pointer"
-                        >
-                          Ouvrir
-                        </button>
-                      ) : (
-                        <>
-                          <a
-                            href={app.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:text-blue-800"
-                          >
-                            Ouvrir
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => setPreviewApp(app)}
-                            className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900 cursor-pointer"
-                            title="Aperçu intégré"
-                          >
-                            <Monitor className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
-
-                      {app.githubRepo && (
-                        <a
-                          href={app.githubRepo}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900"
-                          title="Voir le dépôt GitHub"
-                        >
-                          <GitBranch className="w-3.5 h-3.5" />
-                          GitHub
-                        </a>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => togglePin(app)}
-                        className={`p-1 rounded cursor-pointer ${
-                          app.isPinned
-                            ? 'text-blue-700'
-                            : 'text-slate-400 hover:text-slate-700'
-                        }`}
-                        title={app.isPinned ? 'Désépingler' : 'Épingler'}
-                      >
-                        <Pin className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(app)}
-                        className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
-                        title="Modifier"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteApp(app)}
-                        className="p-1 text-slate-400 hover:text-rose-700 cursor-pointer"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* Panneau d'aperçu intégré (iframe) si une app externe est inspectée */}
-      {previewApp && (
-        <section className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="text-xs font-mono text-slate-500">Aperçu intégré · {previewApp.url}</div>
-              <h3 className="text-base font-semibold text-slate-900">{previewApp.name}</h3>
-            </div>
-            <div className="flex items-center gap-3">
-              <a
-                href={previewApp.url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-medium text-blue-700 hover:underline inline-flex items-center gap-1"
-              >
-                Ouvrir dans un nouvel onglet
-                <ExternalLink className="w-3 h-3" />
-              </a>
-              <button
-                type="button"
-                onClick={() => setPreviewApp(null)}
-                className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-          <iframe
-            src={previewApp.url}
-            title={previewApp.name}
-            className="w-full h-[460px] border border-slate-200 rounded-md bg-slate-50"
-          />
         </section>
       )}
 
