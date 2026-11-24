@@ -20,6 +20,8 @@ import {
   Copy,
   ExternalLink,
   GitBranch,
+  LayoutDashboard,
+  LayoutGrid,
   LogIn,
   LogOut,
   Monitor,
@@ -123,6 +125,8 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
   const [savingForm, setSavingForm] = useState(false);
 
   const [previewApp, setPreviewApp] = useState<TrackedApp | null>(null);
+  const [viewMode, setViewMode] = useState<'cards' | 'mosaic'>('cards');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showGithubGuide, setShowGithubGuide] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
@@ -361,6 +365,7 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
     try {
       await deleteDoc(doc(db, path));
       if (previewApp?.id === app.id) setPreviewApp(null);
+      setConfirmDeleteId(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, path);
     }
@@ -596,6 +601,33 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center border border-slate-200 rounded-md overflow-hidden text-xs">
+              <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 font-medium cursor-pointer ${
+                  viewMode === 'cards'
+                    ? 'bg-blue-700 text-white'
+                    : 'bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                Cartes
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('mosaic')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 font-medium cursor-pointer ${
+                  viewMode === 'mosaic'
+                    ? 'bg-blue-700 text-white'
+                    : 'bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <LayoutDashboard className="w-3.5 h-3.5" />
+                Tableau de bord
+              </button>
+            </div>
+
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -603,7 +635,7 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Rechercher une app..."
-                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-md w-48 focus:outline-none focus:border-blue-700"
+                className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-md w-44 focus:outline-none focus:border-blue-700"
               />
             </div>
 
@@ -650,11 +682,115 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
               Ajouter ma première application
             </button>
           </div>
+        ) : viewMode === 'mosaic' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {filteredApps.map((app) => {
+              const stMeta = STATUS_LABELS[app.status];
+              return (
+                <article
+                  key={app.id}
+                  className="border border-slate-200 rounded-lg overflow-hidden flex flex-col bg-white"
+                >
+                  <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-slate-900 truncate">{app.name}</h3>
+                        <span className={`text-[11px] font-medium ${stMeta.color} shrink-0`}>
+                          {stMeta.label}
+                        </span>
+                      </div>
+                      {!app.isInternalEuroQuant && (
+                        <div className="text-[11px] font-mono text-slate-400 truncate">
+                          {app.url}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 text-xs">
+                      {app.isInternalEuroQuant ? (
+                        <button
+                          type="button"
+                          onClick={onOpenEuroQuant}
+                          className="px-2.5 py-1 bg-slate-900 text-white rounded text-xs font-medium hover:bg-slate-800 cursor-pointer"
+                        >
+                          Ouvrir →
+                        </button>
+                      ) : (
+                        <a
+                          href={app.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-700 text-white rounded text-xs font-medium hover:bg-blue-800"
+                        >
+                          Ouvrir
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+
+                  {app.isInternalEuroQuant && proposals ? (
+                    <div className="p-4 space-y-3 flex-1 bg-white">
+                      <div className="text-xs font-mono uppercase text-blue-700">
+                        Prochain tirage : {proposals.nextDraw.jour} {proposals.nextDraw.dateStr}
+                      </div>
+                      <div className="border border-slate-200 rounded-md p-3 bg-slate-50/50">
+                        <div className="text-[11px] font-mono uppercase text-slate-500 mb-1.5">
+                          Rang 1 (5+2 Anti-partage)
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
+                          {proposals.rank1Primary.balls.map((b) => (
+                            <span
+                              key={b}
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-700 text-white text-xs font-semibold"
+                            >
+                              {b.toString().padStart(2, '0')}
+                            </span>
+                          ))}
+                          <span className="text-slate-300">+</span>
+                          {proposals.rank1Primary.stars.map((s) => (
+                            <span
+                              key={s}
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-500 text-slate-950 text-xs font-semibold"
+                            >
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="border border-blue-200 rounded-md p-3 bg-blue-50/25">
+                        <div className="text-[11px] font-mono uppercase text-blue-800 mb-1.5">
+                          Rang 2 (Rotation ★{proposals.rank2Pack.rotatingStars.join(', ★')})
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
+                          {proposals.rank2Pack.baseBalls.map((b) => (
+                            <span
+                              key={b}
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-700 text-white text-xs font-semibold"
+                            >
+                              {b.toString().padStart(2, '0')}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <iframe
+                      src={app.url}
+                      title={app.name}
+                      loading="lazy"
+                      className="w-full h-[380px] border-0 bg-slate-50"
+                    />
+                  )}
+                </article>
+              );
+            })}
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredApps.map((app) => {
               const stMeta = STATUS_LABELS[app.status];
               const cleanHostPath = app.url.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+              const isConfirming = confirmDeleteId === app.id;
               return (
                 <article
                   key={app.id}
@@ -743,34 +879,55 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => togglePin(app)}
-                        className={`p-1 rounded cursor-pointer ${
-                          app.isPinned
-                            ? 'text-blue-700'
-                            : 'text-slate-400 hover:text-slate-700'
-                        }`}
-                        title={app.isPinned ? 'Désépingler' : 'Épingler'}
-                      >
-                        <Pin className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(app)}
-                        className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
-                        title="Modifier"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteApp(app)}
-                        className="p-1 text-slate-400 hover:text-rose-700 cursor-pointer"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {isConfirming ? (
+                        <div className="flex items-center gap-1 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteApp(app)}
+                            className="px-2 py-0.5 bg-rose-600 text-white rounded font-medium cursor-pointer"
+                          >
+                            Confirmer
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="px-1.5 py-0.5 border border-slate-200 bg-white text-slate-600 rounded cursor-pointer"
+                          >
+                            Non
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => togglePin(app)}
+                            className={`p-1 rounded cursor-pointer ${
+                              app.isPinned
+                                ? 'text-blue-700'
+                                : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                            title={app.isPinned ? 'Désépingler' : 'Épingler'}
+                          >
+                            <Pin className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(app)}
+                            className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+                            title="Modifier"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(app.id)}
+                            className="p-1 text-slate-400 hover:text-rose-700 cursor-pointer"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </article>
