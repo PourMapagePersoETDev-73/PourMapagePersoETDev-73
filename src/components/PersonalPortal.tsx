@@ -123,6 +123,7 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
   const [formNotes, setFormNotes] = useState('');
   const [formPinned, setFormPinned] = useState(false);
   const [savingForm, setSavingForm] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [previewApp, setPreviewApp] = useState<TrackedApp | null>(null);
   const [viewMode, setViewMode] = useState<'cards' | 'mosaic'>('cards');
@@ -266,6 +267,7 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
     setFormStatus('online');
     setFormNotes('');
     setFormPinned(false);
+    setFormError(null);
     setIsFormOpen(true);
   };
 
@@ -278,7 +280,23 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
     setFormStatus(app.status);
     setFormNotes(app.notes);
     setFormPinned(app.isPinned);
+    setFormError(null);
     setIsFormOpen(true);
+  };
+
+  const applyAppPreset = (
+    name: string,
+    url: string,
+    githubRepo: string,
+    notes: string
+  ) => {
+    setFormName(name);
+    setFormUrl(url);
+    setFormGithub(githubRepo);
+    setFormCategory('Outil');
+    setFormStatus('online');
+    setFormNotes(notes);
+    setFormError(null);
   };
 
   const handleSaveApp = async (e: React.FormEvent) => {
@@ -293,40 +311,71 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
     const appsPath = `users/${user.uid}/apps`;
 
     setSavingForm(true);
+    setFormError(null);
+
+    let timeoutId: number | undefined;
     try {
-      if (editingApp) {
-        const ref = doc(db, appsPath, editingApp.id);
-        await updateDoc(ref, {
-          name: cleanName,
-          url: cleanUrl,
-          githubRepo: cleanGithub,
-          category: formCategory,
-          status: formStatus,
-          notes: cleanNotes,
-          isPinned: formPinned,
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        const newId = `app_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-        const ref = doc(db, appsPath, newId);
-        await setDoc(ref, {
-          ownerId: user.uid,
-          name: cleanName,
-          url: cleanUrl,
-          githubRepo: cleanGithub,
-          category: formCategory,
-          status: formStatus,
-          notes: cleanNotes,
-          isPinned: formPinned,
-          isInternalEuroQuant: false,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
+      const writePromise = editingApp
+        ? updateDoc(doc(db, appsPath, editingApp.id), {
+            name: cleanName,
+            url: cleanUrl,
+            githubRepo: cleanGithub,
+            category: formCategory,
+            status: formStatus,
+            notes: cleanNotes,
+            isPinned: formPinned,
+            updatedAt: serverTimestamp(),
+          })
+        : setDoc(
+            doc(
+              db,
+              appsPath,
+              `app_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+            ),
+            {
+              ownerId: user.uid,
+              name: cleanName,
+              url: cleanUrl,
+              githubRepo: cleanGithub,
+              category: formCategory,
+              status: formStatus,
+              notes: cleanNotes,
+              isPinned: formPinned,
+              isInternalEuroQuant: false,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            }
+          );
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(() => {
+          reject(
+            new Error(
+              'Délai dépassé (12 s) : le serveur Firestore ne répond pas. Si vous utilisez Brave, cliquez sur le lion orange en haut et désactivez les boucliers pour ce site.'
+            )
+          );
+        }, 12000);
+      });
+
+      await Promise.race([writePromise, timeoutPromise]);
       setIsFormOpen(false);
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, appsPath);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('Délai dépassé')) {
+        setFormError(msg);
+      } else {
+        try {
+          handleFirestoreError(err, OperationType.WRITE, appsPath);
+        } catch (wrappedErr) {
+          setFormError(
+            wrappedErr instanceof Error
+              ? `Erreur d’enregistrement : ${wrappedErr.message}`
+              : 'Erreur lors de l’enregistrement dans Firestore.'
+          );
+        }
+      }
     } finally {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       setSavingForm(false);
     }
   };
@@ -1138,6 +1187,64 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {!editingApp && (
+              <div className="bg-slate-50 border border-slate-200 rounded-md p-2.5 space-y-1.5">
+                <div className="text-[11px] font-mono uppercase text-slate-500">
+                  Pré-remplir rapidement :
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      applyAppPreset(
+                        'Suivi Piscine',
+                        'https://pourmapagepersoetdev-73.github.io/SuiviPiscine/',
+                        'https://github.com/PourMapagePersoETDev-73/SuiviPiscine',
+                        'Suivi des paramètres et traitement de la piscine'
+                      )
+                    }
+                    className="px-2.5 py-1 text-xs font-medium bg-white border border-slate-200 rounded hover:border-blue-700 hover:text-blue-700 cursor-pointer"
+                  >
+                    Suivi Piscine
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      applyAppPreset(
+                        'Ski Pilot',
+                        'https://pourmapagepersoetdev-73.github.io/SkiPilot/',
+                        'https://github.com/PourMapagePersoETDev-73/SkiPilot',
+                        'Suivi enneigement et sessions ski'
+                      )
+                    }
+                    className="px-2.5 py-1 text-xs font-medium bg-white border border-slate-200 rounded hover:border-blue-700 hover:text-blue-700 cursor-pointer"
+                  >
+                    Ski Pilot
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      applyAppPreset(
+                        'Suivi PAC',
+                        'https://pourmapagepersoetdev-73.github.io/Suivi_PAC_Perso/',
+                        'https://github.com/PourMapagePersoETDev-73/Suivi_PAC_Perso',
+                        'Suivi pompe à chaleur'
+                      )
+                    }
+                    className="px-2.5 py-1 text-xs font-medium bg-white border border-slate-200 rounded hover:border-blue-700 hover:text-blue-700 cursor-pointer"
+                  >
+                    Suivi PAC
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {formError && (
+              <div className="border border-rose-200 bg-rose-50 text-rose-800 rounded-md p-3 text-xs leading-relaxed">
+                {formError}
+              </div>
+            )}
 
             <div className="space-y-3 text-xs">
               <div>
