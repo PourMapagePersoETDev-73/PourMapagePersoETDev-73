@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { User } from 'firebase/auth';
 import {
   collection,
@@ -14,7 +14,7 @@ import {
   where,
 } from 'firebase/firestore';
 import {
-  Bookmark,
+  ArrowLeft,
   Check,
   Code2,
   Copy,
@@ -24,10 +24,13 @@ import {
   LayoutGrid,
   LogIn,
   LogOut,
+  Maximize2,
+  Minimize2,
   Monitor,
   Pencil,
   Pin,
   Plus,
+  RotateCw,
   Search,
   Trash2,
   X,
@@ -54,17 +57,6 @@ export interface TrackedApp {
   isInternalEuroQuant: boolean;
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;
-}
-
-export interface SavedGridDoc {
-  id: string;
-  ownerId: string;
-  label: string;
-  targetRank: 'Rang 1' | 'Rang 2';
-  balls: number[];
-  stars: number[];
-  drawDate: string;
-  createdAt?: Timestamp | null;
 }
 
 interface PersonalPortalProps {
@@ -106,9 +98,8 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
   const [signingIn, setSigningIn] = useState(false);
 
   const [apps, setApps] = useState<TrackedApp[]>([]);
-  const [savedGrids, setSavedGrids] = useState<SavedGridDoc[]>([]);
   const [loadingApps, setLoadingApps] = useState(false);
-  const [seededChecked, setSeededChecked] = useState(false);
+  const seededCheckedRef = useRef(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | TrackedApp['status']>('all');
@@ -125,8 +116,9 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
   const [savingForm, setSavingForm] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [previewApp, setPreviewApp] = useState<TrackedApp | null>(null);
-  const [viewMode, setViewMode] = useState<'cards' | 'mosaic'>('cards');
+  const [viewMode, setViewMode] = useState<'mosaic' | 'cards'>('mosaic');
+  const [focusedAppId, setFocusedAppId] = useState<string | null>(null);
+  const [iframeVersions, setIframeVersions] = useState<Record<string, number>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showGithubGuide, setShowGithubGuide] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -137,18 +129,15 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
     [analysis]
   );
 
-  // Sync user profile + subscribe to apps & savedGrids once authenticated
+  // Sync user profile + subscribe to tracked apps once authenticated
   useEffect(() => {
     if (!authReady || !user) {
       setApps([]);
-      setSavedGrids([]);
-      setSeededChecked(false);
+      seededCheckedRef.current = false;
       return;
     }
 
     const uid = user.uid;
-    let unsubApps = () => {};
-    let unsubGrids = () => {};
 
     async function ensureUserProfile() {
       const userRef = doc(db, 'users', uid);
@@ -176,19 +165,21 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
     const appsPath = `users/${uid}/apps`;
     const appsQuery = query(collection(db, appsPath), where('ownerId', '==', uid));
 
-    unsubApps = onSnapshot(
+    const unsubApps = onSnapshot(
       appsQuery,
       async (snapshot) => {
         const list: TrackedApp[] = snapshot.docs.map((d) => ({
           id: d.id,
           ...(d.data() as Omit<TrackedApp, 'id'>),
         }));
-        list.sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || a.name.localeCompare(b.name));
+        list.sort(
+          (a, b) => Number(b.isPinned) - Number(a.isPinned) || a.name.localeCompare(b.name)
+        );
         setApps(list);
         setLoadingApps(false);
 
-        if (snapshot.empty && !seededChecked) {
-          setSeededChecked(true);
+        if (snapshot.empty && !seededCheckedRef.current) {
+          seededCheckedRef.current = true;
           try {
             const defaultId = 'app_euroquant_main';
             await setDoc(doc(db, appsPath, defaultId), {
@@ -209,7 +200,7 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
             handleFirestoreError(err, OperationType.CREATE, `${appsPath}/app_euroquant_main`);
           }
         } else {
-          setSeededChecked(true);
+          seededCheckedRef.current = true;
         }
       },
       (err) => {
@@ -218,29 +209,10 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
       }
     );
 
-    const gridsPath = `users/${uid}/savedGrids`;
-    const gridsQuery = query(collection(db, gridsPath), where('ownerId', '==', uid));
-
-    unsubGrids = onSnapshot(
-      gridsQuery,
-      (snapshot) => {
-        const items: SavedGridDoc[] = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<SavedGridDoc, 'id'>),
-        }));
-        items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-        setSavedGrids(items);
-      },
-      (err) => {
-        handleFirestoreError(err, OperationType.LIST, gridsPath);
-      }
-    );
-
     return () => {
       unsubApps();
-      unsubGrids();
     };
-  }, [authReady, user, seededChecked]);
+  }, [authReady, user]);
 
   const handleLogin = async () => {
     try {
@@ -266,7 +238,7 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
     setFormCategory('Outil');
     setFormStatus('online');
     setFormNotes('');
-    setFormPinned(false);
+    setFormPinned(true);
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -351,10 +323,10 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
         timeoutId = window.setTimeout(() => {
           reject(
             new Error(
-              'Délai dépassé (12 s) : le serveur Firestore ne répond pas. Si vous utilisez Brave, cliquez sur le lion orange en haut et désactivez les boucliers pour ce site.'
+              'Délai dépassé (20 s) : le serveur Firestore met du temps à répondre. Réessayez dans quelques secondes.'
             )
           );
-        }, 12000);
+        }, 20000);
       });
 
       await Promise.race([writePromise, timeoutPromise]);
@@ -413,48 +385,26 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
     const path = `users/${user.uid}/apps/${app.id}`;
     try {
       await deleteDoc(doc(db, path));
-      if (previewApp?.id === app.id) setPreviewApp(null);
+      if (focusedAppId === app.id) setFocusedAppId(null);
       setConfirmDeleteId(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, path);
     }
   };
 
-  const handleSaveProposedGrid = async (
-    label: string,
-    targetRank: 'Rang 1' | 'Rang 2',
-    balls: number[],
-    stars: number[],
-    drawDate: string
-  ) => {
-    if (!user) return;
-    const gridsPath = `users/${user.uid}/savedGrids`;
-    const newId = `grid_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    try {
-      await setDoc(doc(db, gridsPath, newId), {
-        ownerId: user.uid,
-        label: label.slice(0, 80),
-        targetRank,
-        balls: balls.map((n) => Math.trunc(n)),
-        stars: stars.map((n) => Math.trunc(n)),
-        drawDate: drawDate.slice(0, 32),
-        createdAt: serverTimestamp(),
-      });
-      setCopiedKey(`saved-${targetRank}`);
-      window.setTimeout(() => setCopiedKey(null), 1600);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `${gridsPath}/${newId}`);
-    }
+  const reloadAppFrame = (appId: string) => {
+    setIframeVersions((prev) => ({
+      ...prev,
+      [appId]: (prev[appId] || 0) + 1,
+    }));
   };
 
-  const handleDeleteSavedGrid = async (gridId: string) => {
-    if (!user) return;
-    const path = `users/${user.uid}/savedGrids/${gridId}`;
-    try {
-      await deleteDoc(doc(db, path));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, path);
+  const openAppInCockpit = (app: TrackedApp) => {
+    if (app.isInternalEuroQuant) {
+      onOpenEuroQuant();
+      return;
     }
+    setFocusedAppId(app.id);
   };
 
   const copySnippet = (key: string, text: string) => {
@@ -477,14 +427,19 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
     });
   }, [apps, searchQuery, statusFilter]);
 
+  const focusedApp = useMemo(
+    () => apps.find((a) => a.id === focusedAppId) || null,
+    [apps, focusedAppId]
+  );
+
   const onlineCount = apps.filter((a) => a.status === 'online').length;
+  const pinnedCount = apps.filter((a) => a.isPinned).length;
   const githubCount = apps.filter((a) => a.githubRepo.trim().length > 0).length;
 
   const currentOriginUrl =
     typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : '';
   const embedIframeCode = `<iframe\n  src="${currentOriginUrl}?embed=euroquant"\n  title="EuroQuant — Propositions EuroMillions"\n  width="100%"\n  height="540"\n  style="border: 1px solid #e2e8f0; border-radius: 8px;"\n></iframe>`;
 
-  // État non connecté : Portail d'authentification Google
   if (!authReady) {
     return (
       <div className="bg-white border border-slate-200 rounded-lg p-8 text-center text-sm text-slate-600">
@@ -505,9 +460,9 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
               Tableau de bord de vos applications web &amp; dépôts GitHub
             </h1>
             <p className="text-sm text-slate-600 leading-relaxed">
-              Connectez-vous avec votre compte Google pour retrouver vos applications hébergées
-              (GitHub Pages, Vercel, Cloud Run…), suivre leur statut, conserver vos grilles
-              EuroMillions favorites et accéder à vos outils depuis n’importe quel appareil.
+              Connectez-vous avec votre compte Google pour retrouver toutes vos applications
+              hébergées sur GitHub Pages, les afficher côte à côte en direct et basculer
+              entre elles depuis un cockpit unique.
             </p>
           </div>
 
@@ -527,7 +482,7 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
               onClick={onOpenEuroQuant}
               className="text-xs font-medium text-blue-700 hover:text-blue-800 cursor-pointer"
             >
-              Consulter EuroQuant sans connexion →
+              Accéder à EuroQuant sans connexion →
             </button>
           </div>
 
@@ -537,25 +492,97 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
             </div>
           )}
         </section>
+      </div>
+    );
+  }
 
-        <section className="bg-white border border-slate-200 rounded-lg p-6">
-          <h2 className="text-sm font-semibold text-slate-900 mb-2">
-            Déploiement GitHub Pages inclus
-          </h2>
-          <p className="text-xs text-slate-600 leading-relaxed">
-            Ce projet est déjà configuré avec <span className="font-mono">base: './'</span> dans
-            Vite et un workflow <span className="font-mono">.github/workflows/deploy.yml</span>.
-            Une fois hébergé sur <span className="font-mono">votre-pseudo.github.io</span>, pensez à
-            ajouter votre domaine GitHub Pages dans Firebase Console → Authentication → Settings →
-            Authorized domains pour que la connexion Google fonctionne également depuis GitHub.
-          </p>
-        </section>
+  // Mode Cockpit Focus : une application agrandie plein écran dans le portail avec barre de bascule rapide
+  if (focusedApp) {
+    const stMeta = STATUS_LABELS[focusedApp.status];
+    const frameVersion = iframeVersions[focusedApp.id] || 0;
+
+    return (
+      <div className="space-y-4">
+        <div className="bg-white border border-slate-200 rounded-lg px-4 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setFocusedAppId(null)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-slate-200 rounded-md text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Tableau de bord
+            </button>
+
+            <span className="text-slate-300 hidden sm:inline">|</span>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {apps.map((appItem) => {
+                const isCurrent = appItem.id === focusedApp.id;
+                return (
+                  <button
+                    key={appItem.id}
+                    type="button"
+                    onClick={() => openAppInCockpit(appItem)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
+                      isCurrent
+                        ? 'bg-blue-700 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {appItem.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 text-xs">
+            <span className={`font-medium ${stMeta.color} mr-1`}>{stMeta.label}</span>
+            <button
+              type="button"
+              onClick={() => reloadAppFrame(focusedApp.id)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-slate-200 rounded-md text-slate-700 hover:bg-slate-50 cursor-pointer"
+              title="Recharger l'application"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Recharger</span>
+            </button>
+            <a
+              href={focusedApp.url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-slate-200 rounded-md text-blue-700 hover:bg-slate-50 font-medium"
+            >
+              Ouvrir
+              <ExternalLink className="w-3 h-3" />
+            </a>
+            <button
+              type="button"
+              onClick={() => setFocusedAppId(null)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-900 text-white rounded-md hover:bg-slate-800 cursor-pointer"
+              title="Revenir à la grille"
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+              <span>Réduire</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <iframe
+            key={`${focusedApp.id}-${frameVersion}`}
+            src={focusedApp.url}
+            title={focusedApp.name}
+            className="w-full h-[calc(100vh-14.5rem)] min-h-[600px] border-0 bg-slate-50"
+          />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {errorBanner && (
         <div className="bg-rose-50 border border-rose-200 rounded-md p-3 text-xs text-rose-800 flex items-center justify-between">
           <span>{errorBanner}</span>
@@ -565,19 +592,19 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
         </div>
       )}
 
-      {/* En-tête du portail personnel */}
-      <section className="bg-white border border-slate-200 rounded-lg p-6">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-slate-200">
+      {/* En-tête compact du portail personnel */}
+      <section className="bg-white border border-slate-200 rounded-lg px-6 py-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200">
           <div>
             <p className="text-xs font-mono uppercase tracking-wider text-slate-500">
-              Tableau de bord personnel · Connecté en tant que {user.email}
+              Tableau de bord personnel · {user.email}
             </p>
-            <h1 className="text-2xl font-semibold text-slate-900 mt-1">
+            <h1 className="text-xl font-semibold text-slate-900 mt-0.5">
               Bonjour {user.displayName || 'Utilisateur'} — Vos Applications Web
             </h1>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setShowGithubGuide(true)}
@@ -605,64 +632,49 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
           </div>
         </div>
 
-        {/* 4 Indicateurs du portail */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 pt-5">
+        {/* 4 Indicateurs neutres du portail */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 pt-4">
           <div>
             <div className="text-xs font-mono uppercase text-slate-500">Applications suivies</div>
-            <div className="mt-1 text-2xl font-mono font-semibold text-slate-900 tabular-nums">
+            <div className="mt-1 text-xl font-mono font-semibold text-slate-900 tabular-nums">
               {apps.length}
             </div>
           </div>
           <div>
-            <div className="text-xs font-mono uppercase text-slate-500">Statut En ligne</div>
-            <div className="mt-1 text-2xl font-mono font-semibold text-emerald-700 tabular-nums">
+            <div className="text-xs font-mono uppercase text-slate-500">En ligne</div>
+            <div className="mt-1 text-xl font-mono font-semibold text-emerald-700 tabular-nums">
               {onlineCount}
             </div>
           </div>
           <div>
-            <div className="text-xs font-mono uppercase text-slate-500">Dépôts GitHub liés</div>
-            <div className="mt-1 text-2xl font-mono font-semibold text-slate-900 tabular-nums">
-              {githubCount}
+            <div className="text-xs font-mono uppercase text-slate-500">Épinglées</div>
+            <div className="mt-1 text-xl font-mono font-semibold text-blue-700 tabular-nums">
+              {pinnedCount}
             </div>
           </div>
           <div>
-            <div className="text-xs font-mono uppercase text-slate-500">Prochain EuroMillions</div>
-            <div className="mt-1 text-sm font-mono font-semibold text-blue-700 tabular-nums">
-              {proposals ? `${proposals.nextDraw.jour} ${proposals.nextDraw.dateStr}` : '—'}
-            </div>
-            <div className="text-xs text-slate-500 mt-0.5 tabular-nums">
-              {analysis ? `${analysis.totalDraws} tirages en base` : ''}
+            <div className="text-xs font-mono uppercase text-slate-500">Dépôts GitHub</div>
+            <div className="mt-1 text-xl font-mono font-semibold text-slate-900 tabular-nums">
+              {githubCount}
             </div>
           </div>
         </div>
       </section>
 
-      {/* Liste / Catalogue des applications web personnelles — EN PREMIER */}
-      <section className="bg-white border border-slate-200 rounded-lg p-6 space-y-5">
+      {/* Cockpit Mosaïque (par défaut) / Cartes */}
+      <section className="bg-white border border-slate-200 rounded-lg p-5 sm:p-6 space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-slate-900">
-              Vos applications web ({filteredApps.length})
+              Vos applications ({filteredApps.length})
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Lancez vos applis dans un nouvel onglet ou ouvrez l’aperçu directement ici avec l’icône écran.
+              Utilisez <span className="font-medium text-slate-700">Agrandir</span> pour afficher une appli en grand dans cette fenêtre ou basculez en vue Cartes pour gérer vos liens.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
             <div className="flex items-center border border-slate-200 rounded-md overflow-hidden text-xs">
-              <button
-                type="button"
-                onClick={() => setViewMode('cards')}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 font-medium cursor-pointer ${
-                  viewMode === 'cards'
-                    ? 'bg-blue-700 text-white'
-                    : 'bg-white text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                Cartes
-              </button>
               <button
                 type="button"
                 onClick={() => setViewMode('mosaic')}
@@ -674,6 +686,18 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
               >
                 <LayoutDashboard className="w-3.5 h-3.5" />
                 Tableau de bord
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 font-medium cursor-pointer ${
+                  viewMode === 'cards'
+                    ? 'bg-blue-700 text-white'
+                    : 'bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                Cartes
               </button>
             </div>
 
@@ -735,99 +759,177 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {filteredApps.map((app) => {
               const stMeta = STATUS_LABELS[app.status];
+              const frameVersion = iframeVersions[app.id] || 0;
+              const isConfirming = confirmDeleteId === app.id;
+
               return (
                 <article
                   key={app.id}
                   className="border border-slate-200 rounded-lg overflow-hidden flex flex-col bg-white"
                 >
-                  <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-2">
+                  <div className="px-4 py-2.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="text-sm font-semibold text-slate-900 truncate">{app.name}</h3>
-                        <span className={`text-[11px] font-medium ${stMeta.color} shrink-0`}>
+                        <button
+                          type="button"
+                          onClick={() => cycleStatus(app)}
+                          className={`text-[11px] font-medium ${stMeta.color} shrink-0 cursor-pointer`}
+                          title="Cliquer pour changer le statut"
+                        >
                           {stMeta.label}
-                        </span>
+                        </button>
                       </div>
                       {!app.isInternalEuroQuant && (
                         <div className="text-[11px] font-mono text-slate-400 truncate">
-                          {app.url}
+                          {app.url.replace(/^https?:\/\//i, '').replace(/\/$/, '')}
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 shrink-0 text-xs">
-                      {app.isInternalEuroQuant ? (
-                        <button
-                          type="button"
-                          onClick={onOpenEuroQuant}
-                          className="px-2.5 py-1 bg-slate-900 text-white rounded text-xs font-medium hover:bg-slate-800 cursor-pointer"
-                        >
-                          Ouvrir →
-                        </button>
+
+                    <div className="flex items-center gap-1.5 shrink-0 text-xs">
+                      {isConfirming ? (
+                        <div className="flex items-center gap-1 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteApp(app)}
+                            className="px-2 py-1 bg-rose-600 text-white rounded font-medium cursor-pointer"
+                          >
+                            Confirmer
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="px-1.5 py-1 border border-slate-200 bg-white text-slate-600 rounded cursor-pointer"
+                          >
+                            Non
+                          </button>
+                        </div>
                       ) : (
-                        <a
-                          href={app.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-700 text-white rounded text-xs font-medium hover:bg-blue-800"
-                        >
-                          Ouvrir
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
+                        <>
+                          {!app.isInternalEuroQuant && (
+                            <button
+                              type="button"
+                              onClick={() => reloadAppFrame(app.id)}
+                              className="p-1.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                              title="Recharger l'aperçu"
+                            >
+                              <RotateCw className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(app)}
+                            className="p-1.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                            title="Modifier"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(app.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-700 cursor-pointer"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => openAppInCockpit(app)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-900 text-white rounded text-xs font-medium hover:bg-slate-800 cursor-pointer"
+                            title="Agrandir dans le portail"
+                          >
+                            <Maximize2 className="w-3 h-3" />
+                            <span>Agrandir</span>
+                          </button>
+
+                          {!app.isInternalEuroQuant && (
+                            <a
+                              href={app.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-700 text-white rounded text-xs font-medium hover:bg-blue-800"
+                              title="Ouvrir dans un nouvel onglet"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
 
-                  {app.isInternalEuroQuant && proposals ? (
-                    <div className="p-4 space-y-3 flex-1 bg-white">
-                      <div className="text-xs font-mono uppercase text-blue-700">
-                        Prochain tirage : {proposals.nextDraw.jour} {proposals.nextDraw.dateStr}
-                      </div>
-                      <div className="border border-slate-200 rounded-md p-3 bg-slate-50/50">
-                        <div className="text-[11px] font-mono uppercase text-slate-500 mb-1.5">
-                          Rang 1 (5+2 Anti-partage)
+                  {app.isInternalEuroQuant ? (
+                    <div className="p-5 flex flex-col justify-between h-[400px] bg-white">
+                      {proposals ? (
+                        <div className="space-y-3">
+                          <div className="text-xs font-mono uppercase text-slate-500">
+                            Prochain tirage : {proposals.nextDraw.jour} {proposals.nextDraw.dateStr} ·{' '}
+                            {analysis?.totalDraws ?? 710} tirages en base
+                          </div>
+                          <div className="border border-slate-200 rounded-md p-3.5 bg-slate-50/50">
+                            <div className="text-[11px] font-mono uppercase text-slate-500 mb-2">
+                              Rang 1 (5+2 Anti-partage)
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
+                              {proposals.rank1Primary.balls.map((b) => (
+                                <span
+                                  key={b}
+                                  className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-700 text-white text-xs font-semibold"
+                                >
+                                  {b.toString().padStart(2, '0')}
+                                </span>
+                              ))}
+                              <span className="text-slate-300 px-0.5">+</span>
+                              {proposals.rank1Primary.stars.map((s) => (
+                                <span
+                                  key={s}
+                                  className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-500 text-slate-950 text-xs font-semibold"
+                                >
+                                  {s}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="border border-blue-200 rounded-md p-3.5 bg-blue-50/25">
+                            <div className="text-[11px] font-mono uppercase text-blue-800 mb-2">
+                              Rang 2 (Rotation ★{proposals.rank2Pack.rotatingStars.join(', ★')})
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
+                              {proposals.rank2Pack.baseBalls.map((b) => (
+                                <span
+                                  key={b}
+                                  className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-700 text-white text-xs font-semibold"
+                                >
+                                  {b.toString().padStart(2, '0')}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
-                          {proposals.rank1Primary.balls.map((b) => (
-                            <span
-                              key={b}
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-700 text-white text-xs font-semibold"
-                            >
-                              {b.toString().padStart(2, '0')}
-                            </span>
-                          ))}
-                          <span className="text-slate-300">+</span>
-                          {proposals.rank1Primary.stars.map((s) => (
-                            <span
-                              key={s}
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-amber-500 text-slate-950 text-xs font-semibold"
-                            >
-                              {s}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="border border-blue-200 rounded-md p-3 bg-blue-50/25">
-                        <div className="text-[11px] font-mono uppercase text-blue-800 mb-1.5">
-                          Rang 2 (Rotation ★{proposals.rank2Pack.rotatingStars.join(', ★')})
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
-                          {proposals.rank2Pack.baseBalls.map((b) => (
-                            <span
-                              key={b}
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-blue-700 text-white text-xs font-semibold"
-                            >
-                              {b.toString().padStart(2, '0')}
-                            </span>
-                          ))}
-                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-500">Chargement de l’analyse…</div>
+                      )}
+
+                      <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
+                        <p className="text-xs text-slate-500 line-clamp-2">{app.notes}</p>
+                        <button
+                          type="button"
+                          onClick={onOpenEuroQuant}
+                          className="px-3.5 py-2 bg-blue-700 text-white rounded-md text-xs font-semibold hover:bg-blue-800 shrink-0 cursor-pointer"
+                        >
+                          Ouvrir EuroQuant →
+                        </button>
                       </div>
                     </div>
                   ) : (
                     <iframe
+                      key={`${app.id}-${frameVersion}`}
                       src={app.url}
                       title={app.name}
                       loading="lazy"
-                      className="w-full h-[380px] border-0 bg-slate-50"
+                      className="w-full h-[400px] border-0 bg-slate-50"
                     />
                   )}
                 </article>
@@ -888,28 +990,25 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
                         </button>
                       ) : (
                         <>
+                          <button
+                            type="button"
+                            onClick={() => openAppInCockpit(app)}
+                            className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:text-blue-800 cursor-pointer"
+                            title="Agrandir dans le portail"
+                          >
+                            <Monitor className="w-3.5 h-3.5" />
+                            <span>Agrandir</span>
+                          </button>
                           <a
                             href={app.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:text-blue-800"
+                            className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900"
+                            title="Nouvel onglet"
                           >
-                            Ouvrir
                             <ExternalLink className="w-3 h-3" />
+                            <span>Onglet</span>
                           </a>
-                          <button
-                            type="button"
-                            onClick={() => setPreviewApp(app)}
-                            className={`inline-flex items-center gap-1 cursor-pointer ${
-                              previewApp?.id === app.id
-                                ? 'text-blue-700 font-medium'
-                                : 'text-slate-600 hover:text-slate-900'
-                            }`}
-                            title="Aperçu intégré dans le portail"
-                          >
-                            <Monitor className="w-3.5 h-3.5" />
-                            <span>Aperçu</span>
-                          </button>
                         </>
                       )}
 
@@ -985,184 +1084,6 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
           </div>
         )}
       </section>
-
-      {/* Panneau d'aperçu intégré (iframe) si une app externe est inspectée */}
-      {previewApp && (
-        <section className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <div className="text-xs font-mono text-slate-500">Aperçu intégré · {previewApp.url}</div>
-              <h3 className="text-base font-semibold text-slate-900">{previewApp.name}</h3>
-            </div>
-            <div className="flex items-center gap-3">
-              <a
-                href={previewApp.url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-medium text-blue-700 hover:underline inline-flex items-center gap-1"
-              >
-                Ouvrir dans un nouvel onglet
-                <ExternalLink className="w-3 h-3" />
-              </a>
-              <button
-                type="button"
-                onClick={() => setPreviewApp(null)}
-                className="p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-          <iframe
-            src={previewApp.url}
-            title={previewApp.name}
-            className="w-full h-[540px] border border-slate-200 rounded-md bg-slate-50"
-          />
-        </section>
-      )}
-
-      {/* Widget EuroQuant en direct + Grilles sauvegardées — EN SECOND PLAN */}
-      {proposals && (
-        <section className="bg-white border border-slate-200 rounded-lg p-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
-            <div>
-              <div className="text-xs font-mono uppercase text-blue-700">
-                Accès rapide · EuroQuant ({proposals.nextDraw.jour} {proposals.nextDraw.dateStr})
-              </div>
-              <h2 className="text-base font-semibold text-slate-900 mt-0.5">
-                Propositions prêtes pour le prochain tirage
-              </h2>
-            </div>
-            <button
-              type="button"
-              onClick={onOpenEuroQuant}
-              className="px-3.5 py-1.5 text-xs font-semibold bg-slate-900 text-white rounded-md hover:bg-slate-800 cursor-pointer self-start sm:self-auto"
-            >
-              Ouvrir EuroQuant complet →
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-5">
-            <div className="lg:col-span-7 space-y-3">
-              {/* Ligne Rang 1 */}
-              <div className="border border-slate-200 rounded-md p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
-                <div>
-                  <div className="text-xs font-mono uppercase text-slate-500 mb-1.5">
-                    Rang 1 (5+2 · Anti-partage)
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
-                    {proposals.rank1Primary.balls.map((b) => (
-                      <span
-                        key={b}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-700 text-white text-xs font-semibold"
-                      >
-                        {b.toString().padStart(2, '0')}
-                      </span>
-                    ))}
-                    <span className="text-slate-300 px-0.5">+</span>
-                    {proposals.rank1Primary.stars.map((s) => (
-                      <span
-                        key={s}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-amber-500 text-slate-950 text-xs font-semibold"
-                      >
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleSaveProposedGrid(
-                      `Rang 1 · ${proposals.nextDraw.dateStr}`,
-                      'Rang 1',
-                      proposals.rank1Primary.balls,
-                      proposals.rank1Primary.stars,
-                      proposals.nextDraw.dateStr
-                    )
-                  }
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-slate-200 bg-white rounded-md text-slate-700 hover:bg-slate-50 cursor-pointer self-start sm:self-center"
-                >
-                  <Bookmark className="w-3.5 h-3.5" />
-                  {copiedKey === 'saved-Rang 1' ? 'Enregistrée ✓' : 'Sauvegarder'}
-                </button>
-              </div>
-
-              {/* Ligne Rang 2 */}
-              <div className="border border-blue-200 rounded-md p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-blue-50/25">
-                <div>
-                  <div className="text-xs font-mono uppercase text-blue-800 mb-1.5">
-                    Rang 2 (Pack 3 étoiles rotatives : ★{proposals.rank2Pack.rotatingStars.join(', ★')})
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5 font-mono tabular-nums">
-                    {proposals.rank2Pack.baseBalls.map((b) => (
-                      <span
-                        key={b}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-700 text-white text-xs font-semibold"
-                      >
-                        {b.toString().padStart(2, '0')}
-                      </span>
-                    ))}
-                    <span className="text-slate-400 px-1 text-xs">
-                      + rotation ★{proposals.rank2Pack.rotatingStars.join('/')}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleSaveProposedGrid(
-                      `Rang 2 Base · ${proposals.nextDraw.dateStr}`,
-                      'Rang 2',
-                      proposals.rank2Pack.baseBalls,
-                      proposals.rank2Pack.grids[0].stars,
-                      proposals.nextDraw.dateStr
-                    )
-                  }
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-blue-200 bg-white rounded-md text-blue-800 hover:bg-blue-50 cursor-pointer self-start sm:self-center"
-                >
-                  <Bookmark className="w-3.5 h-3.5" />
-                  {copiedKey === 'saved-Rang 2' ? 'Enregistrée ✓' : 'Sauvegarder'}
-                </button>
-              </div>
-            </div>
-
-            {/* Grilles sauvegardées dans Firestore */}
-            <div className="lg:col-span-5 border border-slate-200 rounded-md p-4 flex flex-col">
-              <div className="text-xs font-mono uppercase text-slate-500 mb-2">
-                Mes grilles sauvegardées ({savedGrids.length})
-              </div>
-              {savedGrids.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-xs text-slate-500 py-6 text-center">
-                  Cliquez sur « Sauvegarder » pour conserver vos grilles dans votre compte.
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100 max-h-40 overflow-y-auto">
-                  {savedGrids.map((g) => (
-                    <div key={g.id} className="py-2 flex items-center justify-between gap-2 text-xs">
-                      <div>
-                        <div className="font-medium text-slate-800">{g.label}</div>
-                        <div className="font-mono text-slate-600 tabular-nums">
-                          {g.balls.map((n) => String(n).padStart(2, '0')).join(' · ')} + ★
-                          {g.stars.join(' · ★')}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteSavedGrid(g.id)}
-                        className="p-1 text-slate-400 hover:text-rose-700 cursor-pointer"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* Modal Ajout / Modification d'application */}
       {isFormOpen && (
@@ -1384,7 +1305,7 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
             <div className="space-y-4 text-xs text-slate-600 leading-relaxed">
               <div>
                 <h3 className="font-semibold text-slate-900 mb-1">
-                  1. Publier ce portail + EuroQuant sur GitHub Pages
+                  1. Publier ce portail sur GitHub Pages
                 </h3>
                 <ul className="list-disc pl-4 space-y-1">
                   <li>

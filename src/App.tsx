@@ -48,6 +48,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (isEmbedMode) return;
+    document.title =
+      activeTab === 'portal'
+        ? 'Mon Portail — Tableau de bord personnel'
+        : 'EuroQuant — Analyse Statistique & Optimisation EuroMillions';
+  }, [activeTab, isEmbedMode]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadDataset() {
@@ -229,8 +237,6 @@ export default function App() {
                 ? hasCustomData
                   ? 'Base mise à jour'
                   : 'Analyse EuroMillions'
-                : user
-                ? 'Tableau de bord perso'
                 : 'Espace Applications'}
             </span>
           </button>
@@ -245,7 +251,7 @@ export default function App() {
                   : 'text-slate-600 border-transparent hover:text-slate-900'
               }`}
             >
-              Mes Applications
+              Tableau de bord
             </button>
 
             {isEuroQuantTab ? (
@@ -278,8 +284,15 @@ export default function App() {
           </nav>
 
           <div className="flex items-center gap-2.5 shrink-0">
-            {isEuroQuantTab ? (
+            {isEuroQuantTab && (
               <>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('portal')}
+                  className="hidden sm:inline-flex items-center px-3 py-2 text-xs sm:text-sm font-medium border border-slate-200 rounded-md text-slate-700 hover:bg-slate-50 whitespace-nowrap transition-colors cursor-pointer"
+                >
+                  ← Mon Portail
+                </button>
                 <button
                   type="button"
                   onClick={() => setIsImportOpen(true)}
@@ -301,14 +314,6 @@ export default function App() {
                   Laboratoire Rang 1 &amp; 2
                 </button>
               </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setActiveTab('overview')}
-                className="px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-md bg-slate-900 text-white hover:bg-slate-800 whitespace-nowrap transition-colors cursor-pointer"
-              >
-                Ouvrir EuroQuant →
-              </button>
             )}
           </div>
         </div>
@@ -322,7 +327,7 @@ export default function App() {
               activeTab === 'portal' ? 'text-blue-700 font-semibold' : 'text-slate-600'
             }`}
           >
-            Mes Applications
+            Tableau de bord
           </button>
           {isEuroQuantTab ? (
             euroQuantLinks.map((link) => (
@@ -418,11 +423,11 @@ export default function App() {
       <footer className="border-t border-slate-200 bg-white mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
           <div>
-            Portail Personnel &amp; EuroQuant · {analysis?.totalDraws ?? 710} tirages FDJ analysés
+            {isEuroQuantTab
+              ? `EuroQuant · ${analysis?.totalDraws ?? 710} tirages FDJ analysés`
+              : 'Mon Portail · Tableau de bord personnel'}
           </div>
-          <div className="font-mono">
-            Hébergement GitHub Pages · Accès synchronisé
-          </div>
+          <div className="font-mono">GitHub Pages · Accès synchronisé</div>
         </div>
       </footer>
     </div>
