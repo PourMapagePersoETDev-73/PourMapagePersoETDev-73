@@ -28,8 +28,11 @@ export interface NumberStat {
   expected: number;
   pct: number;
   zScore: number;
+  recent15: number;
+  recent30: number;
   recent50: number;
   recent100: number;
+  emaRate: number;
   currentGap: number;
   maxGap: number;
   avgGap: number;
@@ -340,31 +343,56 @@ export function computeNumberStats(
 
   const bOcc: number[][] = Array.from({ length: 51 }, () => []);
   const eOcc: number[][] = Array.from({ length: 13 }, () => []);
+  const bRecent15 = new Array<number>(51).fill(0);
+  const bRecent30 = new Array<number>(51).fill(0);
   const bRecent50 = new Array<number>(51).fill(0);
   const bRecent100 = new Array<number>(51).fill(0);
+  const eRecent15 = new Array<number>(13).fill(0);
+  const eRecent30 = new Array<number>(13).fill(0);
   const eRecent50 = new Array<number>(13).fill(0);
   const eRecent100 = new Array<number>(13).fill(0);
+
+  // Exponential Moving Average (EMA) with alpha = 0.08 so recent draws shape hotness immediately
+  const emaAlpha = 0.08;
+  const bEma = new Array<number>(51).fill(5 / 50);
+  const eEma = new Array<number>(13).fill(2 / 12);
 
   const bPairs = new Map<string, number>();
   const ePairs = new Map<string, number>();
 
-  // Markov transition counts: given ball u at draw t-1, count ball v at draw t
+  // Weighted Markov transition counts (recent 150 draws get 2.5x weight so transitions adapt)
   const bTrans = Array.from({ length: 51 }, () => new Array<number>(51).fill(0));
   const bPrevCount = new Array<number>(51).fill(0);
   const eTrans = Array.from({ length: 13 }, () => new Array<number>(13).fill(0));
   const ePrevCount = new Array<number>(13).fill(0);
 
   draws.forEach((d, idx) => {
+    const isR15 = idx >= n - 15;
+    const isR30 = idx >= n - 30;
     const isR50 = idx >= n - 50;
     const isR100 = idx >= n - 100;
+    const transWeight = idx >= n - 150 ? 2.5 : 1;
+
+    const ballSet = new Set(d.balls);
+    for (let num = 1; num <= 50; num++) {
+      bEma[num] = (1 - emaAlpha) * bEma[num] + emaAlpha * (ballSet.has(num) ? 1 : 0);
+    }
+    const starSet = new Set(d.stars);
+    for (let num = 1; num <= 12; num++) {
+      eEma[num] = (1 - emaAlpha) * eEma[num] + emaAlpha * (starSet.has(num) ? 1 : 0);
+    }
 
     for (const b of d.balls) {
       bOcc[b].push(idx);
+      if (isR15) bRecent15[b]++;
+      if (isR30) bRecent30[b]++;
       if (isR50) bRecent50[b]++;
       if (isR100) bRecent100[b]++;
     }
     for (const e of d.stars) {
       eOcc[e].push(idx);
+      if (isR15) eRecent15[e]++;
+      if (isR30) eRecent30[e]++;
       if (isR50) eRecent50[e]++;
       if (isR100) eRecent100[e]++;
     }
@@ -381,15 +409,15 @@ export function computeNumberStats(
     if (idx > 0) {
       const prev = draws[idx - 1];
       for (const u of prev.balls) {
-        bPrevCount[u]++;
+        bPrevCount[u] += transWeight;
         for (const v of d.balls) {
-          bTrans[u][v]++;
+          bTrans[u][v] += transWeight;
         }
       }
       for (const u of prev.stars) {
-        ePrevCount[u]++;
+        ePrevCount[u] += transWeight;
         for (const v of d.stars) {
-          eTrans[u][v]++;
+          eTrans[u][v] += transWeight;
         }
       }
     }
@@ -416,12 +444,13 @@ export function computeNumberStats(
     if (currentGap > maxGap) maxGap = currentGap;
     const avgGap = occ.length > 0 ? gapSum / occ.length : n;
 
-    // Markov lift given lastDraw.balls
+    // Smoothed Markov lift given lastDraw.balls
     let condProbSum = 0;
     let condDrivers = 0;
+    const prior = 6;
     for (const u of lastDraw.balls) {
       if (bPrevCount[u] > 0) {
-        condProbSum += bTrans[u][num] / bPrevCount[u];
+        condProbSum += (bTrans[u][num] + prior * 0.1) / (bPrevCount[u] + prior);
         condDrivers++;
       }
     }
@@ -444,8 +473,11 @@ export function computeNumberStats(
       expected: expB,
       pct: n > 0 ? (freq / n) * 100 : 0,
       zScore: stdB > 0 ? (freq - expB) / stdB : 0,
+      recent15: bRecent15[num],
+      recent30: bRecent30[num],
       recent50: bRecent50[num],
       recent100: bRecent100[num],
+      emaRate: bEma[num],
       currentGap,
       maxGap,
       avgGap,
@@ -477,13 +509,14 @@ export function computeNumberStats(
 
     let condProbSum = 0;
     let condDrivers = 0;
+    const baseStarProb = 2 / 12;
+    const prior = 6;
     for (const u of lastDraw.stars) {
       if (ePrevCount[u] > 0) {
-        condProbSum += eTrans[u][num] / ePrevCount[u];
+        condProbSum += (eTrans[u][num] + prior * baseStarProb) / (ePrevCount[u] + prior);
         condDrivers++;
       }
     }
-    const baseStarProb = 2 / 12;
     const avgCondProb = condDrivers > 0 ? condProbSum / condDrivers : baseStarProb;
     const markovLift = ((avgCondProb - baseStarProb) / baseStarProb) * 100;
 
@@ -503,8 +536,11 @@ export function computeNumberStats(
       expected: expE,
       pct: n > 0 ? (freq / n) * 100 : 0,
       zScore: stdE > 0 ? (freq - expE) / stdE : 0,
+      recent15: eRecent15[num],
+      recent30: eRecent30[num],
       recent50: eRecent50[num],
       recent100: eRecent100[num],
+      emaRate: eEma[num],
       currentGap,
       maxGap,
       avgGap,
@@ -922,17 +958,38 @@ export function scoreCandidates(
   const minFreq = Math.min(...stats.map((s) => s.frequency), 0);
   const freqSpan = Math.max(maxFreq - minFreq, 1);
 
-  const maxGap = Math.max(...stats.map((s) => s.currentGap), 1);
-  const maxLift = Math.max(...stats.map((s) => Math.abs(s.markovLift)), 1);
+  const maxR30 = Math.max(...stats.map((s) => s.recent30), 1);
+  const minR30 = Math.min(...stats.map((s) => s.recent30), 0);
+  const r30Span = Math.max(maxR30 - minR30, 1);
+
+  const maxEma = Math.max(...stats.map((s) => s.emaRate), 0.001);
+  const minEma = Math.min(...stats.map((s) => s.emaRate), 0);
+  const emaSpan = Math.max(maxEma - minEma, 0.001);
+
+  const minLift = Math.min(...stats.map((s) => s.markovLift), 0);
+  const maxLift = Math.max(...stats.map((s) => s.markovLift), 1);
+  const liftSpan = Math.max(maxLift - minLift, 1);
 
   const weightSum =
     weights.wHot + weights.wGap + weights.wMarkov + (isStar ? 0 : weights.wAntiShare) || 1;
 
   return stats
     .map((s) => {
-      const hotScore = ((s.frequency - minFreq) / freqSpan) * 100;
-      const gapScore = (s.currentGap / maxGap) * 100;
-      const markovScore = ((s.markovLift + maxLift) / (2 * maxLift)) * 100;
+      const histNorm = ((s.frequency - minFreq) / freqSpan) * 100;
+      const r30Norm = ((s.recent30 - minR30) / r30Span) * 100;
+      const emaNorm = ((s.emaRate - minEma) / emaSpan) * 100;
+      // Adaptive hotness: EMA (50%) + 30-draw momentum (30%) + historical base (20%)
+      const hotScore = 0.5 * emaNorm + 0.3 * r30Norm + 0.2 * histNorm;
+
+      // Cycle-aware gap score: resets sharply on gap === 0, peaks around >= 1.35x avgGap
+      const gapRatio = s.currentGap / Math.max(s.avgGap, 1);
+      const gapScore =
+        s.currentGap === 0
+          ? 5
+          : Math.min(100, (gapRatio / 1.45) * 85 + (gapRatio >= 0.85 ? 15 : 0));
+
+      const markovScore = ((s.markovLift - minLift) / liftSpan) * 100;
+
       // Anti-share bonus: >31 (never dates), and avoid round multiples of 5/10 slightly
       const antiShareScore = isStar
         ? 50
@@ -1169,25 +1226,102 @@ export function formatEur(amount: number): string {
 export function mergeEuroMillionsDraws(
   existing: EuroMillionsDraw[],
   incoming: EuroMillionsDraw[]
-): { merged: EuroMillionsDraw[]; addedCount: number } {
+): { merged: EuroMillionsDraw[]; addedCount: number; updatedCount: number } {
   const keyOf = (d: EuroMillionsDraw) =>
-    `${d.date}|${d.balls.join('-')}|${d.stars.join('-')}`;
+    d.date.trim() ? d.date.trim() : `${d.id}|${d.balls.join('-')}|${d.stars.join('-')}`;
 
   const map = new Map<string, EuroMillionsDraw>();
   for (const d of existing) {
     map.set(keyOf(d), d);
   }
   let addedCount = 0;
+  let updatedCount = 0;
   for (const d of incoming) {
     const k = keyOf(d);
-    if (!map.has(k)) {
+    const prev = map.get(k);
+    if (!prev) {
       addedCount++;
+    } else if (
+      prev.balls.join('-') !== d.balls.join('-') ||
+      prev.stars.join('-') !== d.stars.join('-')
+    ) {
+      updatedCount++;
     }
     map.set(k, d);
   }
 
   const merged = [...map.values()].sort((a, b) => a.timestamp - b.timestamp);
-  return { merged, addedCount };
+  return { merged, addedCount, updatedCount };
+}
+
+export function createManualEuroMillionsDraw(
+  dateIso: string,
+  ballsInput: number[],
+  starsInput: number[]
+): EuroMillionsDraw {
+  const [yyyyStr, mmStr, ddStr] = dateIso.split('-');
+  const year = Number.parseInt(yyyyStr, 10);
+  const month = Number.parseInt(mmStr, 10);
+  const day = Number.parseInt(ddStr, 10);
+  const timestamp = Date.UTC(year, month - 1, day);
+  const dt = new Date(timestamp);
+  const weekday = dt.getUTCDay();
+  const jour =
+    weekday === 2
+      ? 'MARDI'
+      : weekday === 5
+      ? 'VENDREDI'
+      : ['DIMANCHE', 'LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI'][weekday] ||
+        'MARDI';
+
+  const balls = [...ballsInput].sort((a, b) => a - b) as [number, number, number, number, number];
+  const stars = [...starsInput].sort((a, b) => a - b) as [number, number];
+  const sum = balls.reduce((acc, x) => acc + x, 0);
+  const evenCount = balls.filter((x) => x % 2 === 0).length;
+  const lowCount = balls.filter((x) => x <= 25).length;
+  const above31Count = balls.filter((x) => x > 31).length;
+  let hasConsecutive = false;
+  for (let k = 0; k < balls.length - 1; k++) {
+    if (balls[k + 1] - balls[k] === 1) {
+      hasConsecutive = true;
+      break;
+    }
+  }
+
+  return {
+    id: `manual_${yyyyStr}${mmStr}${ddStr}`,
+    jour,
+    date: `${ddStr}/${mmStr}/${yyyyStr}`,
+    timestamp,
+    cycleDrawNumber: null,
+    balls,
+    stars,
+    sum,
+    evenCount,
+    lowCount,
+    above31Count,
+    hasConsecutive,
+    winnersRank1Fr: 0,
+    winnersRank1Eu: 0,
+    payoutRank1: 0,
+    winnersRank2Fr: 0,
+    winnersRank2Eu: 0,
+    payoutRank2: 0,
+    winnersRank3Eu: 0,
+    payoutRank3: 0,
+    myMillion: '',
+  };
+}
+
+export function getDefaultNextDrawIsoDate(draws: EuroMillionsDraw[]): string {
+  if (draws.length === 0) {
+    return new Date().toISOString().slice(0, 10);
+  }
+  const latest = draws[draws.length - 1];
+  const isTuesday = latest.jour.toUpperCase().includes('MARDI');
+  const offsetDays = isTuesday ? 3 : 4;
+  const nextTs = latest.timestamp + offsetDays * 86400000;
+  return new Date(nextTs).toISOString().slice(0, 10);
 }
 
 export function getNextDrawLabel(latestDraw: EuroMillionsDraw): {
@@ -1311,13 +1445,16 @@ function findBestBalancedCombinations(
 
 export function buildNextDrawProposals(analysis: DatasetAnalysis): NextDrawProposals {
   const nextDraw = getNextDrawLabel(analysis.latestDraw);
+  const latestBallsLabel = analysis.latestDraw.balls
+    .map((b) => b.toString().padStart(2, '0'))
+    .join('-');
 
-  // Rank 1 scoring: balanced Hot + Gap + Markov + Anti-Share (>31) to maximize unshared payout
+  // Rank 1 scoring: reactive EMA Hot + Cycle-Gap + Smoothed Markov + light Anti-Share (hard filter enforces >=2 >31)
   const r1Weights: PredictionWeights = {
     wHot: 35,
-    wGap: 35,
-    wMarkov: 20,
-    wAntiShare: 50,
+    wGap: 30,
+    wMarkov: 35,
+    wAntiShare: 25,
     enforceStructure: true,
     avoidConsecutive: true,
   };
@@ -1347,12 +1484,12 @@ export function buildNextDrawProposals(analysis: DatasetAnalysis): NextDrawPropo
     rationale,
   });
 
-  // Rank 2 Pack: focus on balanced Hot + Gap + Markov + Anti-Share with 3 rotating stars (3 grids = 7.50 €)
+  // Rank 2 Pack: reactive Hot + Gap + Markov with 3 rotating stars (3 grids = 7.50 €)
   const r2Weights: PredictionWeights = {
-    wHot: 40,
-    wGap: 40,
-    wMarkov: 20,
-    wAntiShare: 35,
+    wHot: 35,
+    wGap: 35,
+    wMarkov: 30,
+    wAntiShare: 18,
     enforceStructure: true,
     avoidConsecutive: false,
   };
@@ -1378,7 +1515,7 @@ export function buildNextDrawProposals(analysis: DatasetAnalysis): NextDrawPropo
     rank1Primary: makeGridInfo(
       bestR1,
       topStarsR1,
-      'Équilibre structurel (somme 105–155, 2B/3H ou 3B/2H, parité 2/3) + anti-partage (≥ 2 boules > 31) et zéro suite consécutive.'
+      `Recalculée après le tirage du ${analysis.latestDraw.date} (${latestBallsLabel}) : dynamique EMA récente, rattrapage d’écart relatif, transitions Markov et ≥ 2 boules > 31.`
     ),
     rank1Alternate: makeGridInfo(
       altR1,

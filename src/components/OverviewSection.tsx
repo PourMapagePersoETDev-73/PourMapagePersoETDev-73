@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Check, Copy, Upload } from 'lucide-react';
+import { CalendarPlus, Check, Copy, Upload } from 'lucide-react';
 import {
   buildNextDrawProposals,
   DatasetAnalysis,
@@ -9,7 +9,7 @@ import {
 interface OverviewSectionProps {
   analysis: DatasetAnalysis;
   onNavigate: (tab: 'overview' | 'frequencies' | 'lab' | 'backtest' | 'history') => void;
-  onOpenImport: () => void;
+  onOpenImport: (mode?: 'manual' | 'csv') => void;
 }
 
 export const OverviewSection: React.FC<OverviewSectionProps> = ({
@@ -68,18 +68,26 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             <button
               type="button"
-              onClick={onOpenImport}
+              onClick={() => onOpenImport('manual')}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-blue-200 bg-blue-50/60 rounded-md text-blue-800 hover:bg-blue-100/70 cursor-pointer"
+            >
+              <CalendarPlus className="w-3.5 h-3.5" />
+              Saisir un tirage
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenImport('csv')}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium border border-slate-200 rounded-md text-slate-700 hover:bg-slate-50 cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5" />
-              Mettre à jour CSV
+              CSV
             </button>
             <button
               type="button"
               onClick={() => onNavigate('lab')}
               className="px-3.5 py-2 text-xs font-semibold bg-blue-700 text-white rounded-md hover:bg-blue-800 cursor-pointer"
             >
-              Personnaliser dans le Laboratoire →
+              Laboratoire →
             </button>
           </div>
         </div>
@@ -277,8 +285,17 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
           </div>
 
           <div className="shrink-0 bg-slate-50 border border-slate-200 rounded-md px-4 py-3">
-            <div className="text-xs font-mono text-slate-500 mb-2">
-              Dernier tirage enregistré · {latestDraw.jour} {latestDraw.date}
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="text-xs font-mono text-slate-500">
+                Dernier tirage · {latestDraw.jour} {latestDraw.date}
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenImport('manual')}
+                className="text-[11px] font-semibold text-blue-700 hover:text-blue-800 cursor-pointer"
+              >
+                + Saisir le suivant
+              </button>
             </div>
             <div className="flex items-center gap-2">
               {latestDraw.balls.map((b) => (

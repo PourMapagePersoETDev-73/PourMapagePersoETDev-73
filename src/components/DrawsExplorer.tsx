@@ -1,15 +1,22 @@
 import React, { useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { CalendarPlus, Search, Trash2 } from 'lucide-react';
 import { EuroMillionsDraw, formatEur } from '../utils/euromillionsAnalysis';
 
 interface DrawsExplorerProps {
   drawsDescending: EuroMillionsDraw[];
+  onOpenManualAdd?: () => void;
+  onDeleteDraw?: (draw: EuroMillionsDraw) => void;
 }
 
-export const DrawsExplorer: React.FC<DrawsExplorerProps> = ({ drawsDescending }) => {
+export const DrawsExplorer: React.FC<DrawsExplorerProps> = ({
+  drawsDescending,
+  onOpenManualAdd,
+  onDeleteDraw,
+}) => {
   const [query, setQuery] = useState('');
   const [dayFilter, setDayFilter] = useState<'ALL' | 'MARDI' | 'VENDREDI'>('ALL');
   const [page, setPage] = useState(1);
+  const [confirmKey, setConfirmKey] = useState<string | null>(null);
   const pageSize = 25;
 
   const filtered = useMemo(() => {
@@ -40,11 +47,22 @@ export const DrawsExplorer: React.FC<DrawsExplorerProps> = ({ drawsDescending })
             Historique complet des tirages ({filtered.length} résultats)
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Recherchez par date (ex : 20/11/2026), numéro de boule (1–50) ou identifiant de tirage.
+            Recherchez par date (ex : 24/11/2026), numéro de boule (1–50) ou ajoutez un nouveau tirage.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {onOpenManualAdd && (
+            <button
+              type="button"
+              onClick={onOpenManualAdd}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-700 text-white rounded-md hover:bg-blue-800 cursor-pointer"
+            >
+              <CalendarPlus className="w-3.5 h-3.5" />
+              Saisir un tirage
+            </button>
+          )}
+
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -92,61 +110,100 @@ export const DrawsExplorer: React.FC<DrawsExplorerProps> = ({ drawsDescending })
               <th className="py-2.5 px-3 text-right">Somme</th>
               <th className="py-2.5 px-3 text-right">Gagnants R1 (EU)</th>
               <th className="py-2.5 px-3 text-right">Gain Rang 2</th>
+              {onDeleteDraw && <th className="py-2.5 px-3 text-right">Action</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-slate-500">
+                <td colSpan={onDeleteDraw ? 8 : 7} className="py-10 text-center text-slate-500">
                   Aucun tirage ne correspond à votre recherche.
                 </td>
               </tr>
             ) : (
-              rows.map((d) => (
-                <tr key={d.id + d.date} className="h-10 hover:bg-slate-50/70">
-                  <td className="py-2 px-3 font-mono tabular-nums text-slate-900 font-medium">
-                    {d.date}
-                  </td>
-                  <td className="py-2 px-3 text-slate-600">{d.jour}</td>
-                  <td className="py-2 px-3">
-                    <div className="flex items-center gap-1.5 font-mono tabular-nums">
-                      {d.balls.map((b) => (
-                        <span
-                          key={b}
-                          className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-700 text-white text-[11px] font-semibold"
-                        >
-                          {b.toString().padStart(2, '0')}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="py-2 px-3">
-                    <div className="flex items-center gap-1 font-mono tabular-nums">
-                      {d.stars.map((s) => (
-                        <span
-                          key={s}
-                          className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-500 text-slate-950 text-[11px] font-semibold"
-                        >
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="py-2 px-3 text-right font-mono tabular-nums text-slate-700">
-                    {d.sum}
-                  </td>
-                  <td className="py-2 px-3 text-right font-mono tabular-nums text-slate-700">
-                    {d.winnersRank1Eu > 0 ? (
-                      <span className="text-emerald-700 font-semibold">{d.winnersRank1Eu}</span>
-                    ) : (
-                      '0'
+              rows.map((d) => {
+                const rowKey = `${d.id}_${d.date}`;
+                const isConfirming = confirmKey === rowKey;
+                return (
+                  <tr key={rowKey} className="h-10 hover:bg-slate-50/70">
+                    <td className="py-2 px-3 font-mono tabular-nums text-slate-900 font-medium">
+                      {d.date}
+                    </td>
+                    <td className="py-2 px-3 text-slate-600">{d.jour}</td>
+                    <td className="py-2 px-3">
+                      <div className="flex items-center gap-1.5 font-mono tabular-nums">
+                        {d.balls.map((b) => (
+                          <span
+                            key={b}
+                            className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-700 text-white text-[11px] font-semibold"
+                          >
+                            {b.toString().padStart(2, '0')}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="flex items-center gap-1 font-mono tabular-nums">
+                        {d.stars.map((s) => (
+                          <span
+                            key={s}
+                            className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-500 text-slate-950 text-[11px] font-semibold"
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono tabular-nums text-slate-700">
+                      {d.sum}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono tabular-nums text-slate-700">
+                      {d.winnersRank1Eu > 0 ? (
+                        <span className="text-emerald-700 font-semibold">{d.winnersRank1Eu}</span>
+                      ) : (
+                        '0'
+                      )}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono tabular-nums text-slate-900">
+                      {d.payoutRank2 > 0 ? formatEur(d.payoutRank2) : '—'}
+                    </td>
+                    {onDeleteDraw && (
+                      <td className="py-2 px-3 text-right">
+                        {isConfirming ? (
+                          <div className="inline-flex items-center gap-1 text-[11px]">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onDeleteDraw(d);
+                                setConfirmKey(null);
+                              }}
+                              className="px-2 py-0.5 bg-rose-600 text-white rounded font-medium cursor-pointer"
+                            >
+                              Suppr.
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmKey(null)}
+                              className="px-1.5 py-0.5 border border-slate-200 bg-white text-slate-600 rounded cursor-pointer"
+                            >
+                              Non
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmKey(rowKey)}
+                            className="p-1 text-slate-400 hover:text-rose-700 cursor-pointer"
+                            title="Supprimer ce tirage"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </td>
                     )}
-                  </td>
-                  <td className="py-2 px-3 text-right font-mono tabular-nums text-slate-900">
-                    {d.payoutRank2 > 0 ? formatEur(d.payoutRank2) : '—'}
-                  </td>
-                </tr>
-              ))
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

@@ -127,6 +127,7 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
   const [viewMode, setViewMode] = useState<'mosaic' | 'cards'>('mosaic');
   const [iframeVersions, setIframeVersions] = useState<Record<string, number>>({});
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showGithubGuide, setShowGithubGuide] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
@@ -222,7 +223,15 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
       },
       (err) => {
         setLoadingApps(false);
-        handleFirestoreError(err, OperationType.LIST, appsPath);
+        try {
+          handleFirestoreError(err, OperationType.LIST, appsPath);
+        } catch (wrapped) {
+          setErrorBanner(
+            wrapped instanceof Error
+              ? `Impossible de lire vos applications : ${wrapped.message}`
+              : 'Impossible de lire vos applications dans Firestore.'
+          );
+        }
       }
     );
 
@@ -336,36 +345,29 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
             }
           );
 
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = window.setTimeout(() => {
-          reject(
-            new Error(
-              'Délai dépassé (20 s) : le serveur Firestore met du temps à répondre. Réessayez dans quelques secondes.'
-            )
-          );
-        }, 20000);
-      });
-
-      await Promise.race([writePromise, timeoutPromise]);
+      await writePromise;
       setIsFormOpen(false);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('Délai dépassé')) {
-        setFormError(msg);
-      } else {
-        try {
-          handleFirestoreError(err, OperationType.WRITE, appsPath);
-        } catch (wrappedErr) {
-          setFormError(
-            wrappedErr instanceof Error
-              ? `Erreur d’enregistrement : ${wrappedErr.message}`
-              : 'Erreur lors de l’enregistrement dans Firestore.'
-          );
-        }
+      try {
+        handleFirestoreError(err, OperationType.WRITE, appsPath);
+      } catch (wrappedErr) {
+        setFormError(
+          wrappedErr instanceof Error
+            ? `Erreur d’enregistrement : ${wrappedErr.message}`
+            : 'Erreur lors de l’enregistrement dans Firestore.'
+        );
       }
     } finally {
-      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       setSavingForm(false);
+    }
+  };
+
+  const reportActionError = (err: unknown, op: OperationType, path: string, label: string) => {
+    try {
+      handleFirestoreError(err, op, path);
+    } catch (wrapped) {
+      const msg = wrapped instanceof Error ? wrapped.message : String(wrapped);
+      setErrorBanner(`${label} : ${msg}`);
     }
   };
 
@@ -380,7 +382,7 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
         updatedAt: serverTimestamp(),
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, path);
+      reportActionError(err, OperationType.UPDATE, path, 'Impossible de changer le statut');
     }
   };
 
@@ -393,19 +395,23 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
         updatedAt: serverTimestamp(),
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, path);
+      reportActionError(err, OperationType.UPDATE, path, 'Impossible d’épingler l’application');
     }
   };
 
   const handleDeleteApp = async (app: TrackedApp) => {
-    if (!user) return;
+    if (!user || deletingId) return;
     const path = `users/${user.uid}/apps/${app.id}`;
+    setDeletingId(app.id);
+    setErrorBanner(null);
     try {
       await deleteDoc(doc(db, path));
       if (focusedAppId === app.id) onFocusApp(null);
       setConfirmDeleteId(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, path);
+      reportActionError(err, OperationType.DELETE, path, `Échec de suppression de « ${app.name} »`);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -793,15 +799,17 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
                         <div className="flex items-center gap-1 text-[11px]">
                           <button
                             type="button"
+                            disabled={deletingId === app.id}
                             onClick={() => handleDeleteApp(app)}
-                            className="px-2 py-1 bg-rose-600 text-white rounded font-medium cursor-pointer"
+                            className="px-2 py-1 bg-rose-600 text-white rounded font-medium disabled:opacity-50 cursor-pointer"
                           >
-                            Confirmer
+                            {deletingId === app.id ? 'Suppression…' : 'Confirmer'}
                           </button>
                           <button
                             type="button"
+                            disabled={deletingId === app.id}
                             onClick={() => setConfirmDeleteId(null)}
-                            className="px-1.5 py-1 border border-slate-200 bg-white text-slate-600 rounded cursor-pointer"
+                            className="px-1.5 py-1 border border-slate-200 bg-white text-slate-600 rounded disabled:opacity-50 cursor-pointer"
                           >
                             Non
                           </button>
@@ -1032,15 +1040,17 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
                         <div className="flex items-center gap-1 text-[11px]">
                           <button
                             type="button"
+                            disabled={deletingId === app.id}
                             onClick={() => handleDeleteApp(app)}
-                            className="px-2 py-0.5 bg-rose-600 text-white rounded font-medium cursor-pointer"
+                            className="px-2 py-0.5 bg-rose-600 text-white rounded font-medium disabled:opacity-50 cursor-pointer"
                           >
-                            Confirmer
+                            {deletingId === app.id ? 'Suppression…' : 'Confirmer'}
                           </button>
                           <button
                             type="button"
+                            disabled={deletingId === app.id}
                             onClick={() => setConfirmDeleteId(null)}
-                            className="px-1.5 py-0.5 border border-slate-200 bg-white text-slate-600 rounded cursor-pointer"
+                            className="px-1.5 py-0.5 border border-slate-200 bg-white text-slate-600 rounded disabled:opacity-50 cursor-pointer"
                           >
                             Non
                           </button>
@@ -1149,14 +1159,14 @@ export const PersonalPortal: React.FC<PersonalPortalProps> = ({
                     onClick={() =>
                       applyAppPreset(
                         'Suivi PAC',
-                        'https://pourmapagepersoetdev-73.github.io/SuiviAC-V3/',
-                        'https://github.com/PourMapagePersoETDev-73/SuiviAC-V3',
+                        'https://pourmapagepersoetdev-73.github.io/SuiviPAC-V3/',
+                        'https://github.com/PourMapagePersoETDev-73/SuiviPAC-V3',
                         'Suivi pompe à chaleur'
                       )
                     }
                     className="px-2.5 py-1 text-xs font-medium bg-white border border-slate-200 rounded hover:border-blue-700 hover:text-blue-700 cursor-pointer"
                   >
-                    Suivi PAC
+                    Suivi PAC (SuiviPAC-V3)
                   </button>
                 </div>
               </div>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { Upload } from 'lucide-react';
+import { CalendarPlus } from 'lucide-react';
 import { auth } from './firebase';
 import {
   analyzeDataset,
@@ -40,6 +40,7 @@ export default function App() {
   const [defaultDraws, setDefaultDraws] = useState<EuroMillionsDraw[]>([]);
   const [hasCustomData, setHasCustomData] = useState<boolean>(false);
   const [isImportOpen, setIsImportOpen] = useState<boolean>(false);
+  const [importModalMode, setImportModalMode] = useState<'manual' | 'csv'>('manual');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -138,6 +139,21 @@ export default function App() {
   const handleResetDefault = () => {
     if (defaultDraws.length > 0) {
       handleApplyImport(defaultDraws, false);
+    }
+  };
+
+  const openUpdateDraws = (mode: 'manual' | 'csv' = 'manual') => {
+    setImportModalMode(mode);
+    setIsImportOpen(true);
+  };
+
+  const handleDeleteDraw = (target: EuroMillionsDraw) => {
+    if (!analysis || analysis.draws.length <= 1) return;
+    const remaining = analysis.draws.filter(
+      (d) => !(d.date === target.date && d.id === target.id)
+    );
+    if (remaining.length > 0) {
+      handleApplyImport(remaining, true);
     }
   };
 
@@ -333,12 +349,12 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsImportOpen(true)}
+                  onClick={() => openUpdateDraws('manual')}
                   className="inline-flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-medium border border-slate-200 rounded-md text-slate-700 hover:bg-slate-50 whitespace-nowrap transition-colors cursor-pointer"
                 >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Importer CSV</span>
-                  <span className="sm:hidden">CSV</span>
+                  <CalendarPlus className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">+ Tirage / CSV</span>
+                  <span className="sm:hidden">+ Tirage</span>
                 </button>
                 <button
                   type="button"
@@ -458,14 +474,18 @@ export default function App() {
                   <OverviewSection
                     analysis={analysis}
                     onNavigate={(t) => setActiveTab(t)}
-                    onOpenImport={() => setIsImportOpen(true)}
+                    onOpenImport={(mode = 'manual') => openUpdateDraws(mode)}
                   />
                 )}
                 {activeTab === 'frequencies' && <FrequencyMatrix draws={analysis.draws} />}
                 {activeTab === 'lab' && <PredictionLab analysis={analysis} />}
                 {activeTab === 'backtest' && <BacktestAndPayouts analysis={analysis} />}
                 {activeTab === 'history' && (
-                  <DrawsExplorer drawsDescending={analysis.drawsDescending} />
+                  <DrawsExplorer
+                    drawsDescending={analysis.drawsDescending}
+                    onOpenManualAdd={() => openUpdateDraws('manual')}
+                    onDeleteDraw={handleDeleteDraw}
+                  />
                 )}
               </>
             )}
@@ -476,6 +496,7 @@ export default function App() {
       {analysis && (
         <ImportDrawsModal
           isOpen={isImportOpen}
+          initialMode={importModalMode}
           onClose={() => setIsImportOpen(false)}
           currentDraws={analysis.draws}
           hasCustomData={hasCustomData}
